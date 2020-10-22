@@ -40,7 +40,7 @@ class CPPDisplay(BaseDisplay):
 
         # plt.show()
         buf = io.BytesIO()
-        plt.savefig(buf, format='png', bbox_inches='tight')
+        plt.savefig(buf, format='png', bbox_inches='tight', dpi=180)
         buf.seek(0)
         # plt.close(fig=fig)
         plt.close('all')

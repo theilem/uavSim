@@ -20,6 +20,7 @@ class DHState(BaseState):
         self.movement_budgets = [0] * num_agents
         self.landeds = [False] * num_agents
         self.terminals = [False] * num_agents
+        self.device_coms = [-1] * num_agents
 
         self.initial_movement_budgets = [0] * num_agents
         self.initial_total_data = 0
@@ -67,6 +68,9 @@ class DHState(BaseState):
 
     def set_terminal(self, terminal):
         self.terminals[self.active_agent] = terminal
+
+    def set_device_com(self, device_com):
+        self.device_coms[self.active_agent] = device_com
 
     def get_active_agent(self):
         return self.active_agent

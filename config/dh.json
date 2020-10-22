@@ -2,7 +2,7 @@
     "model_stats_params": {
         "save_model": "models/save_model",
         "moving_average_length": 50,
-        "log_file_name": "20201021-183736",
+        "log_file_name": "20201022-194439",
         "training_images": false
     },
     "grid_params": {
@@ -34,7 +34,7 @@
                 "color": "blue"
             }
         },
-        "multi_agent": true
+        "multi_agent": false
     },
     "reward_params": {
         "boundary_penalty": 1.0,
@@ -45,9 +45,9 @@
     "trainer_params": {
         "batch_size": 128,
         "num_steps": 1000000.0,
-        "rm_pre_fill_ratio": 0.01,
+        "rm_pre_fill_ratio": 0.5,
         "rm_pre_fill_random": true,
-        "eval_period": 1,
+        "eval_period": 5,
         "rm_size": 50000,
         "load_model": ""
     },

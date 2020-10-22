@@ -63,6 +63,7 @@ class DHPhysics(GridPhysics):
         self.state.device_map = device_list.get_data_map(self.state.shape)
 
         idx = max(set(indices), key=indices.count)
+        self.state.set_device_com(idx)
 
         return idx
 

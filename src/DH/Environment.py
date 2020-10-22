@@ -46,14 +46,30 @@ class DHEnvironment(BaseEnvironment):
     def test_episode(self):
         state = copy.deepcopy(self.init_episode())
         self.stats.on_episode_begin(self.episode_count)
+        first_action = True
         while not state.all_terminal:
-            for self.physics.state.active_agent in range(state.num_agents):
+            for state.active_agent in range(state.num_agents):
                 if state.terminal:
                     continue
                 action = self.agent.get_exploitation_action_target(state)
-                next_state = self.physics.step(GridActions(action))
-                self.stats.add_experience((copy.deepcopy(state), action, 0.0, copy.deepcopy(next_state)))
-                state = copy.deepcopy(next_state)
+                if not first_action:
+                    reward = self.rewards.calculate_reward(self.last_states[state.active_agent],
+                                                           GridActions(self.last_actions[state.active_agent]), state)
+                    self.stats.add_experience(
+                        (self.last_states[state.active_agent], self.last_actions[state.active_agent], reward,
+                         copy.deepcopy(state)))
+
+                self.last_states[state.active_agent] = copy.deepcopy(state)
+                self.last_actions[state.active_agent] = action
+                state = self.physics.step(GridActions(action))
+                if state.terminal:
+                    reward = self.rewards.calculate_reward(self.last_states[state.active_agent],
+                                                           GridActions(self.last_actions[state.active_agent]), state)
+                    self.stats.add_experience(
+                        (self.last_states[state.active_agent], self.last_actions[state.active_agent], reward,
+                         copy.deepcopy(state)))
+
+            first_action = False
 
         self.stats.on_episode_end(self.episode_count)
         self.stats.log_testing_data(step=self.step_count)
@@ -81,7 +97,8 @@ class DHEnvironment(BaseEnvironment):
                 self.trainer.add_experience(self.last_states[state.active_agent], self.last_actions[state.active_agent],
                                             reward, state)
                 self.stats.add_experience(
-                    (self.last_states[state.active_agent], self.last_actions[state.active_agent], reward, state))
+                    (self.last_states[state.active_agent], self.last_actions[state.active_agent], reward,
+                     copy.deepcopy(state)))
 
             self.last_states[state.active_agent] = copy.deepcopy(state)
             self.last_actions[state.active_agent] = action
@@ -92,7 +109,8 @@ class DHEnvironment(BaseEnvironment):
                 self.trainer.add_experience(self.last_states[state.active_agent], self.last_actions[state.active_agent],
                                             reward, state)
                 self.stats.add_experience(
-                    (self.last_states[state.active_agent], self.last_actions[state.active_agent], reward, state))
+                    (self.last_states[state.active_agent], self.last_actions[state.active_agent], reward,
+                     copy.deepcopy(state)))
 
         self.step_count += 1
         self.first_action = False

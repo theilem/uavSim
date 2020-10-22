@@ -2,7 +2,7 @@
     "model_stats_params": {
         "save_model": "models/save_model",
         "moving_average_length": 50,
-        "log_file_name": "20201021-181547",
+        "log_file_name": "20201022-194431",
         "training_images": false
     },
     "grid_params": {

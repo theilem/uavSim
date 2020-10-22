@@ -42,9 +42,11 @@ class DHDisplay(BaseDisplay):
         self.draw_start_and_end(trajectory)
 
         for exp in trajectory:
-            device_data_before = np.array([device.collected_data for device in exp[0].device_list.devices])
-            device_data_after = np.array([device.collected_data for device in exp[3].device_list.devices])
-            color = exp[0].device_list.devices[np.argmax(device_data_before - device_data_after)].color
+            idx = exp[3].device_coms[exp[0].active_agent]
+            if idx == -1:
+                color = "black"
+            else:
+                color = exp[0].device_list.devices[idx].color
 
             self.draw_movement(exp[0].position, exp[3].position, color=color)
 
