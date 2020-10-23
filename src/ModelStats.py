@@ -45,8 +45,7 @@ class ModelStats:
                     print('Deleting old log dir')
                     shutil.rmtree(self.log_dir)
                 else:
-                    print('Okay bye')
-                    exit(1)
+                    raise AttributeError('Okay bye')
 
         self.training_log_writer = tf.summary.create_file_writer(self.log_dir + '/training')
         self.testing_log_writer = tf.summary.create_file_writer(self.log_dir + '/test')

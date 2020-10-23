@@ -1,7 +1,7 @@
 from src.CPP.State import CPPState
 from src.CPP.SimpleSquareCamera import SimpleSquareCameraParams, SimpleSquareCamera
 from src.ModelStats import ModelStats
-from src.base.GridActions import GridActions
+from src.base.GridActions import GridActions, GridActionsNoHover
 from src.base.GridPhysics import GridPhysics
 
 
@@ -26,7 +26,7 @@ class CPPPhysics(GridPhysics):
 
         stats.add_log_data_callback('cral', self.get_cral)
         stats.add_log_data_callback('cr', self.get_coverage_ratio)
-        stats.add_log_data_callback('has_landed', self.has_landed)
+        stats.add_log_data_callback('successful_landing', self.has_landed)
         stats.add_log_data_callback('boundary_counter', self.get_boundary_counter)
         stats.add_log_data_callback('landing_attempts', self.get_landing_attempts)
         stats.add_log_data_callback('movement_ratio', self.get_movement_ratio)
@@ -52,7 +52,7 @@ class CPPPhysics(GridPhysics):
         self.state.add_explored(view)
 
     def get_example_action(self):
-        return GridActions.LAND
+        return GridActionsNoHover.LAND
 
     def is_in_landing_zone(self):
         return self.state.is_in_landing_zone()

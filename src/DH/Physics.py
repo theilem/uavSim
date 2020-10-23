@@ -30,7 +30,7 @@ class DHPhysics(GridPhysics):
 
         stats.add_log_data_callback('cral', self.get_cral)
         stats.add_log_data_callback('cr', self.get_collection_ratio)
-        stats.add_log_data_callback('has_landed', self.has_landed)
+        stats.add_log_data_callback('successful_landing', self.has_landed)
         stats.add_log_data_callback('boundary_counter', self.get_boundary_counter)
         stats.add_log_data_callback('landing_attempts', self.get_landing_attempts)
         stats.add_log_data_callback('movement_ratio', self.get_movement_ratio)

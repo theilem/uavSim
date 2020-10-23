@@ -8,3 +8,11 @@ class GridActions(Enum):
     WEST = 3
     LAND = 4
     HOVER = 5
+
+
+class GridActionsNoHover(Enum):
+    NORTH = 0
+    EAST = 1
+    SOUTH = 2
+    WEST = 3
+    LAND = 4

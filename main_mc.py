@@ -15,7 +15,7 @@ def eval_logs(event_path):
     event_acc = EventAccumulator(event_path, size_guidance={'tensors': 100000})
     event_acc.Reload()
 
-    _, _, vals = zip(*event_acc.Tensors('has_landed'))
+    _, _, vals = zip(*event_acc.Tensors('successful_landing'))
     has_landed = [tf.make_ndarray(val) for val in vals]
 
     _, _, vals = zip(*event_acc.Tensors('cr'))
@@ -27,32 +27,38 @@ def eval_logs(event_path):
     _, _, vals = zip(*event_acc.Tensors('boundary_counter'))
     boundary_counter = [tf.make_ndarray(val) for val in vals]
 
-    print("Has Landed:", sum(has_landed) / len(has_landed))
+    print("Successful Landing:", sum(has_landed) / len(has_landed))
     print("Collection ratio:", sum(cr) / len(cr))
     print("Collection ratio and landed:", sum(cral) / len(cral))
     print("Boundary counter:", sum(boundary_counter) / len(boundary_counter))
 
 
-def dh_mc(args, params: DHEnvironmentParams, samples):
+def dh_mc(args, params: DHEnvironmentParams):
     if args.num_agents is not None:
         num_range = [int(i) for i in args.num_agents]
         params.grid_params.num_agents_range = num_range
 
-    env = DHEnvironment(params)
-    env.agent.load_weights_full_path(args.weights)
+    try:
+        env = DHEnvironment(params)
+        env.agent.load_weights(args.weights)
 
-    env.eval(samples, show=args.show)
+        env.eval(int(args.samples), show=args.show)
+    except AttributeError:
+        print("Not overriding log dir, eval existing:")
 
-    eval_logs("logs/" + args.id + "/test")
+    eval_logs("logs/training/" + args.id + "/test")
 
 
-def cpp_mc(args, params: CPPEnvironmentParams, samples):
-    env = CPPEnvironment(params)
-    env.agent.load_weights_full_path(args.weights)
+def cpp_mc(args, params: CPPEnvironmentParams):
+    try:
+        env = CPPEnvironment(params)
+        env.agent.load_weights(args.weights)
 
-    env.eval(samples, show=args.show)
+        env.eval(int(args.samples), show=args.show)
+    except AttributeError:
+        print("Not overriding log dir, eval existing:")
 
-    eval_logs("logs/" + args.id + "/test")
+    eval_logs("logs/training/" + args.id + "/test")
 
 
 if __name__ == "__main__":
@@ -64,7 +70,6 @@ if __name__ == "__main__":
     parser.add_argument('--seed', default=None, help="Seed for repeatability")
     parser.add_argument('--show', default=False, help="Show individual plots, allows saving")
     parser.add_argument('--params', nargs='*', default=None)
-    parser.add_argument('--eval_only', default=False, help="Skip running and eval corresponding log files directly")
 
     # DH Params
     parser.add_argument('--dh', action='store_true', help='Run Path Planning for Data Harvesting')
@@ -74,10 +79,6 @@ if __name__ == "__main__":
     parser.add_argument('--cpp', action='store_true', help='Run Coverage Path Planning')
 
     args = parser.parse_args()
-
-    if args.eval_only:
-        eval_logs("logs/" + args.id + "/test")
-        exit(0)
 
     if args.seed:
         np.random.seed(int(args.seed))
@@ -94,6 +95,6 @@ if __name__ == "__main__":
     os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 
     if args.cpp:
-        cpp_mc(args, params, args.samples)
+        cpp_mc(args, params)
     elif args.dh:
-        dh_mc(args, params, args.samples)
+        dh_mc(args, params)
