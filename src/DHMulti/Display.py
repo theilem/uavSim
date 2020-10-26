@@ -3,38 +3,34 @@ import matplotlib.pyplot as plt
 import io
 import tensorflow as tf
 import matplotlib.patches as patches
+
+from src.DH.Display import DHDisplay
 from src.Map.Map import Map
 from src.base.BaseDisplay import BaseDisplay
 
 
-class DHDisplay(BaseDisplay):
+class DHMultiDisplay(DHDisplay):
 
     def __init__(self):
         super().__init__()
-        self.channel = None
 
-    def set_channel(self, channel):
-        self.channel = channel
+    def draw_start_and_end(self, trajectory):
+        for exp in trajectory:
+            state, action, reward, next_state = exp
 
-    def draw_bar_plots(self, final_state, ax_bar):
-        # Add bar plots
-        device_list = final_state.device_list
-        devices = device_list.get_devices()
-        colors = [device.color for device in devices]
-        names = ["total"] + colors
-        colors = ["black"] + colors
-        datas = [device_list.get_total_data()] + [device.data for device in devices]
-        collected_datas = [device_list.get_collected_data()] + [device.collected_data for device in devices]
-        y_pos = np.arange(len(colors))
+            # Identify first moves
+            if state.movement_budget == state.initial_movement_budget:
+                plt.scatter(state.position[0] + 0.5, state.position[1] + 0.5, s=self.marker_size, marker="D",
+                            color="w")
 
-        plt.sca(ax_bar)
-        ax_bar.barh(y_pos, datas)
-        ax_bar.barh(y_pos, collected_datas)
-        ax_bar.set_yticks(y_pos)
-        ax_bar.set_yticklabels(names)
-        ax_bar.invert_yaxis()
-        ax_bar.set_xlabel("Data")
-        ax_bar.set_aspect(- np.diff(ax_bar.get_xlim())[0] / np.diff(ax_bar.get_ylim())[0])
+            # Identify last moves
+            if next_state.terminal:
+                if next_state.landed:
+                    plt.scatter(next_state.position[0] + 0.5, next_state.position[1] + 0.5,
+                                s=self.marker_size, marker="D", color="green")
+                else:
+                    plt.scatter(next_state.position[0] + 0.5, next_state.position[1] + 0.5,
+                                s=self.marker_size, marker="D", color="r")
 
     def display_episode(self, env_map: Map, trajectory, plot=False, save_path=None):
 
@@ -62,7 +58,7 @@ class DHDisplay(BaseDisplay):
         self.draw_start_and_end(trajectory)
 
         for exp in trajectory:
-            idx = exp[3].device_com
+            idx = exp[3].device_coms[exp[0].active_agent]
             if idx == -1:
                 color = "black"
             else:
@@ -70,6 +66,7 @@ class DHDisplay(BaseDisplay):
 
             self.draw_movement(exp[0].position, exp[3].position, color=color)
 
+        # Add bar plots
         self.draw_bar_plots(final_state, ax_bar)
 
         # save image and return

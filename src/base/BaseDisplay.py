@@ -1,3 +1,6 @@
+import io
+import tensorflow as tf
+
 from src.Map.Map import Map
 import numpy as np
 import matplotlib.pyplot as plt
@@ -89,21 +92,18 @@ class BaseDisplay:
         plt.yticks(locs_new, tick_labels_y)
 
     def draw_start_and_end(self, trajectory):
-        for exp in trajectory:
-            state, action, reward, next_state = exp
+        first_state = trajectory[0][0]
+        final_state = trajectory[-1][3]
 
-            # Identify first moves
-            if state.movement_budget == state.initial_movement_budget:
-                plt.scatter(state.position[0] + 0.5, state.position[1] + 0.5, s=self.marker_size, marker="D", color="w")
+        plt.scatter(first_state.position[0] + 0.5, first_state.position[1] + 0.5, s=self.marker_size, marker="D",
+                    color="w")
 
-            # Identify last moves
-            if next_state.terminal:
-                if next_state.landed:
-                    plt.scatter(next_state.position[0] + 0.5, next_state.position[1] + 0.5,
-                                s=self.marker_size, marker="D", color="green")
-                else:
-                    plt.scatter(next_state.position[0] + 0.5, next_state.position[1] + 0.5,
-                                s=self.marker_size, marker="D", color="r")
+        if final_state.landed:
+            plt.scatter(final_state.position[0] + 0.5, final_state.position[1] + 0.5,
+                        s=self.marker_size, marker="D", color="green")
+        else:
+            plt.scatter(final_state.position[0] + 0.5, final_state.position[1] + 0.5,
+                        s=self.marker_size, marker="D", color="r")
 
     def draw_movement(self, from_position, to_position, color):
         y = from_position[1]
@@ -119,3 +119,14 @@ class BaseDisplay:
             else:
                 plt.quiver(x + 0.5, y + 0.5, dir_x, -dir_y, color=color,
                            scale=self.arrow_scale, scale_units='inches')
+
+    def create_tf_image(self):
+        buf = io.BytesIO()
+        plt.savefig(buf, format='png', dpi=180, bbox_inches='tight')
+        buf.seek(0)
+        plt.close('all')
+        combined_image = tf.image.decode_png(buf.getvalue(), channels=3)
+        return tf.expand_dims(combined_image, 0)
+
+    def display_episode(self, map_image, trajectory, plot=False, save_path=None):
+        pass

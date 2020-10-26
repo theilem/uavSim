@@ -18,7 +18,7 @@ class CPPGrid(BaseGrid):
         super().__init__(params, stats)
         self.params = params
 
-        self.generator = RandomTargetGenerator(params.generator_params)
+        self.generator = RandomTargetGenerator(params.generator_params, self.map_image.get_size())
         self.target_zone = self.generator.generate_target(self.map_image.obstacles)
 
     def init_episode(self):

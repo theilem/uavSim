@@ -77,7 +77,7 @@ class DHPhysics(GridPhysics):
         return self.state.get_collection_ratio()
 
     def get_movement_budget_used(self):
-        return sum(self.state.initial_movement_budgets) - sum(self.state.movement_budgets)
+        return self.state.initial_movement_budget - self.state.movement_budget
 
     def get_max_rate(self):
         return self.channel.get_max_rate()
@@ -86,7 +86,7 @@ class DHPhysics(GridPhysics):
         return self.state.get_collected_data() / self.get_movement_budget_used()
 
     def get_cral(self):
-        return self.get_collection_ratio() * self.state.all_landed
+        return self.get_collection_ratio() * self.state.landed
 
     def get_boundary_counter(self):
         return self.boundary_counter
@@ -95,7 +95,7 @@ class DHPhysics(GridPhysics):
         return self.landing_attempts
 
     def get_movement_ratio(self):
-        return float(self.get_movement_budget_used()) / float(sum(self.state.initial_movement_budgets))
+        return float(self.get_movement_budget_used()) / float(self.state.initial_movement_budget)
 
     def has_landed(self):
-        return self.state.all_landed
+        return self.state.landed

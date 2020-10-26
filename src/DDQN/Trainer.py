@@ -48,6 +48,7 @@ class DDQNTrainer:
         target_size = self.replay_memory.get_max_size() * self.params.rm_pre_fill_ratio
         if self.replay_memory.get_size() >= target_size or self.replay_memory.full:
             if self.prefill_bar:
+                self.prefill_bar.update(target_size - self.prefill_bar.n)
                 self.prefill_bar.close()
             return False
 

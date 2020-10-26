@@ -134,3 +134,4 @@ dmypy.json
 # custom
 logs
 models
+res/*.npy

@@ -5,19 +5,19 @@ import logging
 
 class RandomTargetGeneratorParams:
     def __init__(self):
-        self.shape = (32, 32)
         self.coverage_range = (0.2, 0.8)
         self.shape_range = (1, 5)
 
 
 class RandomTargetGenerator:
 
-    def __init__(self, params: RandomTargetGeneratorParams):
+    def __init__(self, params: RandomTargetGeneratorParams, shape):
         self.params = params
+        self.shape = shape
 
     def generate_target(self, obstacles):
 
-        area = np.product(self.params.shape)
+        area = np.product(self.shape)
 
         target = self.__generate_random_shapes_area(
             self.params.shape_range[0],
@@ -29,7 +29,7 @@ class RandomTargetGenerator:
         return target & ~obstacles
 
     def __generate_random_shapes(self, min_shapes, max_shapes):
-        img, _ = random_shapes(self.params.shape, max_shapes, min_shapes=min_shapes, multichannel=False,
+        img, _ = random_shapes(self.shape, max_shapes, min_shapes=min_shapes, multichannel=False,
                                allow_overlap=True, random_seed=np.random.randint(2**32 - 1))
         # Numpy random usage for random seed unifies random seed which can be set for repeatability
         attempt = np.array(img != 255, dtype=bool)

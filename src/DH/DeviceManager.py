@@ -1,5 +1,3 @@
-import os
-
 import numpy as np
 
 from src.DH.IoTDevice import IoTDeviceParams, DeviceList
@@ -40,7 +38,6 @@ class DeviceManager:
         return self.generate_device_list_from_args(device_count, positions, datas)
 
     def generate_device_list_from_args(self, device_count, positions, datas):
-
         # get colors
         colors = ColorMap[0:max(device_count, len(ColorMap))]
 

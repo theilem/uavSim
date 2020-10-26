@@ -23,6 +23,7 @@ class CPPEnvironmentParams(BaseEnvironmentParams):
 
 
 class CPPEnvironment(BaseEnvironment):
+
     def __init__(self, params: CPPEnvironmentParams):
         self.display = CPPDisplay()
         super().__init__(params, self.display)
@@ -34,33 +35,3 @@ class CPPEnvironment(BaseEnvironment):
                                stats=self.stats)
         self.trainer = DDQNTrainer(params=params.trainer_params, agent=self.agent)
 
-    def test_episode(self):
-        state = copy.deepcopy(self.init_episode())
-        self.stats.on_episode_begin(self.episode_count)
-        while not state.terminal:
-            action = self.agent.get_exploitation_action_target(state)
-            next_state = self.physics.step(GridActions(action))
-            reward = self.rewards.calculate_reward(state, GridActions(action), next_state)
-            self.stats.add_experience((copy.deepcopy(state), action, reward, copy.deepcopy(next_state)))
-            state = copy.deepcopy(next_state)
-
-        self.stats.on_episode_end(self.episode_count)
-        self.stats.log_testing_data(step=self.step_count)
-
-    def test_scenario(self, scenario):
-        state = copy.deepcopy(self.init_episode(scenario))
-        while not state.terminal:
-            action = self.agent.get_exploitation_action_target(state)
-            state = self.physics.step(GridActions(action))
-
-    def step(self, state: CPPState, random=False):
-        if random:
-            action = self.agent.get_random_action()
-        else:
-            action = self.agent.act(state)
-        next_state = self.physics.step(GridActions(action))
-        reward = self.rewards.calculate_reward(state, GridActions(action), next_state)
-        self.trainer.add_experience(state, action, reward, next_state)
-        self.stats.add_experience((state, action, reward, next_state))
-        self.step_count += 1
-        return next_state

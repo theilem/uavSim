@@ -38,16 +38,7 @@ class CPPDisplay(BaseDisplay):
         if plot:
             plt.show()
 
-        # plt.show()
-        buf = io.BytesIO()
-        plt.savefig(buf, format='png', bbox_inches='tight', dpi=180)
-        buf.seek(0)
-        # plt.close(fig=fig)
-        plt.close('all')
-        combined_image = tf.image.decode_png(buf.getvalue(), channels=3)
-        combined_image = tf.expand_dims(combined_image, 0)
-
-        return combined_image
+        return self.create_tf_image()
 
     def draw_map(self, map_in):
         rgb = map_in[0, :, :, :3]

@@ -4,6 +4,7 @@ import distutils.util
 
 from src.ModelStats import ModelStatsParams, ModelStats
 from src.base.BaseDisplay import BaseDisplay
+from src.base.GridActions import GridActions
 
 
 class BaseEnvironmentParams:
@@ -15,6 +16,7 @@ class BaseEnvironment:
     def __init__(self, params: BaseEnvironmentParams, display: BaseDisplay):
         self.stats = ModelStats(params.model_stats_params, display=display)
         self.trainer = None
+        self.agent = None
         self.grid = None
         self.rewards = None
         self.physics = None
@@ -42,7 +44,7 @@ class BaseEnvironment:
         self.stats.log_training_data(step=self.step_count)
 
         self.episode_count += 1
-        
+
     def run(self):
 
         self.fill_replay_memory()
@@ -64,7 +66,35 @@ class BaseEnvironment:
         self.stats.training_ended()
 
     def step(self, state, random=False):
-        pass
+        if random:
+            action = self.agent.get_random_action()
+        else:
+            action = self.agent.act(state)
+        next_state = self.physics.step(GridActions(action))
+        reward = self.rewards.calculate_reward(state, GridActions(action), next_state)
+        self.trainer.add_experience(state, action, reward, next_state)
+        self.stats.add_experience((state, action, reward, copy.deepcopy(next_state)))
+        self.step_count += 1
+        return copy.deepcopy(next_state)
+
+    def test_episode(self):
+        state = copy.deepcopy(self.init_episode())
+        self.stats.on_episode_begin(self.episode_count)
+        while not state.terminal:
+            action = self.agent.get_exploitation_action_target(state)
+            next_state = self.physics.step(GridActions(action))
+            reward = self.rewards.calculate_reward(state, GridActions(action), next_state)
+            self.stats.add_experience((copy.deepcopy(state), action, reward, copy.deepcopy(next_state)))
+            state = copy.deepcopy(next_state)
+
+        self.stats.on_episode_end(self.episode_count)
+        self.stats.log_testing_data(step=self.step_count)
+
+    def test_scenario(self, scenario):
+        state = copy.deepcopy(self.init_episode(scenario))
+        while not state.terminal:
+            action = self.agent.get_exploitation_action_target(state)
+            state = self.physics.step(GridActions(action))
 
     def init_episode(self, init_state=None):
         if init_state:
@@ -75,12 +105,6 @@ class BaseEnvironment:
         self.rewards.reset()
         self.physics.reset(state)
         return state
-
-    def test_episode(self):
-        pass
-
-    def test_scenario(self, scenario):
-        pass
 
     def eval(self, episodes, show=False):
         for _ in tqdm.tqdm(range(episodes)):

@@ -3,6 +3,7 @@ import os
 
 from src.CPP.Environment import CPPEnvironmentParams, CPPEnvironment
 from src.DH.Environment import DHEnvironmentParams, DHEnvironment
+from src.DHMulti.Environment import DHMultiEnvironment
 
 from utils import *
 
@@ -19,6 +20,12 @@ def main_dh(p):
     env.run()
 
 
+def main_dh_multi(p):
+    env = DHMultiEnvironment(p)
+
+    env.run()
+
+
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
@@ -31,6 +38,7 @@ if __name__ == "__main__":
 
     parser.add_argument('--cpp', action='store_true', help='Run Coverage Path Planning')
     parser.add_argument('--dh', action='store_true', help='Run Path Planning for Data Harvesting')
+    parser.add_argument('--multi', action='store_true', help='Run Path Planning for Multi (So far only DH)')
 
     args = parser.parse_args()
 
@@ -62,4 +70,7 @@ if __name__ == "__main__":
     if args.cpp:
         main_cpp(params)
     elif args.dh:
-        main_dh(params)
+        if args.multi:
+            main_dh_multi(params)
+        else:
+            main_dh(params)
