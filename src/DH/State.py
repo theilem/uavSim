@@ -48,7 +48,7 @@ class DHState(BaseState):
         return np.array([self.movement_budget])
 
     def get_num_scalars(self):
-        return len(self.get_scalars())
+        return 1
 
     def get_boolean_map(self):
         padded_red = pad_centered(self, np.concatenate([np.expand_dims(self.no_fly_zone, -1),
