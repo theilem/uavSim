@@ -47,3 +47,18 @@ def override_params(params, overrides):
         print("Overriding param", overrides[k], "from", oldval, "to", to_val)
 
     return params
+
+
+def get_bool_user(message, default: bool):
+    if default:
+        default_string = '[Y/n]'
+    else:
+        default_string = '[y/N]'
+    resp = input('{} {}\n'.format(message, default_string))
+    try:
+        if distutils.util.strtobool(resp):
+            return True
+        else:
+            return False
+    except ValueError:
+        return default

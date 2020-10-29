@@ -10,7 +10,7 @@
             100,
             200
         ],
-        "map_path": "res/downtown.png",
+        "map_path": "res/manhattan32.png",
         "generator_params": {
             "shape": [
                 32,
@@ -34,8 +34,8 @@
     },
     "trainer_params": {
         "batch_size": 128,
-        "num_steps": 1000000.0,
-        "rm_pre_fill_ratio": 0.5,
+        "num_steps": 1000,
+        "rm_pre_fill_ratio": 0.0,
         "rm_pre_fill_random": true,
         "eval_period": 5,
         "rm_size": 50000,
@@ -59,7 +59,7 @@
     "physics_params": {
         "camera_params": {
             "half_length": 2,
-            "map_path": "res/downtown.png"
+            "map_path": "res/manhattan32.png"
         }
     }
 }

@@ -2,7 +2,7 @@ import numpy as np
 
 from src.DH.DeviceManager import DeviceManagerParams, DeviceManager
 import src.Map.Map as Map
-from src.DH.State import DHState
+from src.DH.State import DHState, DHScenario
 from src.base.BaseGrid import BaseGrid, BaseGridParams
 
 
@@ -58,10 +58,21 @@ class DHGrid(BaseGrid):
 
         return state
 
-    def init_scenario(self, scenario):
-        self.device_list = scenario.device_list
+    def create_scenario(self, scenario: DHScenario):
+        state = DHState(self.map_image)
+        state.position = self.starting_vector[scenario.position_idx]
+        state.movement_budget = scenario.movement_budget
+        state.initial_movement_budget = scenario.movement_budget
 
-        return scenario.init_state
+        positions = [self.device_positions[idx] for idx in scenario.device_idcs]
+        state.reset_devices(self.device_manager.generate_device_list_from_args(len(positions), positions,
+                                                                               scenario.device_data))
+        return state
+
+    def init_scenario(self, state: DHState):
+        self.device_list = state.device_list
+
+        return state
 
     def get_example_state(self):
         state = DHState(self.map_image)

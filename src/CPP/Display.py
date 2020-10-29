@@ -1,10 +1,5 @@
 import numpy as np
 import matplotlib.pyplot as plt
-import io
-import tensorflow as tf
-from matplotlib import patches
-from skimage.color import rgb2hsv, hsv2rgb
-
 from src.Map.Map import Map
 from src.base.BaseDisplay import BaseDisplay
 
@@ -35,6 +30,22 @@ class CPPDisplay(BaseDisplay):
         if save_path is not None:
             fig.savefig(save_path, bbox_inches='tight',
                         format='png', dpi=300)
+        if plot:
+            plt.show()
+
+        return self.create_tf_image()
+
+    def display_state(self, env_map, initial_state, state, plot=False):
+        fig_size = 5.5
+        fig, ax = plt.subplots(1, 1, figsize=[fig_size, fig_size])
+        value_map = state.coverage * 1.0 + (~state.coverage) * 0.75
+
+        self.create_grid_image(ax=ax, env_map=env_map, value_map=value_map, green=initial_state.target)
+
+        color = "green" if state.landed else "r"
+        plt.scatter(state.position[0] + 0.5, state.position[1] + 0.5,
+                    s=self.marker_size, marker="D", color=color)
+
         if plot:
             plt.show()
 

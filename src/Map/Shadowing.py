@@ -34,6 +34,7 @@ def bresenham(x0, y0, x1, y1, obstacles, shadow_map):
 
 
 def calculate_shadowing(map_path, save_as):
+    print("Calculating shadowing maps")
     total_map = load_map(map_path)
     obstacles = total_map.obstacles
     size = total_map.obstacles.shape[0]

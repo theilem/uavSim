@@ -45,8 +45,11 @@ def load_map(path):
     return Map(data)
 
 
-def load_target(path):
+def load_target(path, obstacles=None):
     if type(path) is not str:
         raise TypeError('path needs to be a string')
-    data = io.imread(path, as_gray=True)
-    return np.array(data, dtype=bool)
+
+    data = np.array(io.imread(path, as_gray=True), dtype=bool)
+    if obstacles is not None:
+        data = data & ~obstacles
+    return data

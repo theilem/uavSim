@@ -5,6 +5,13 @@ from src.StateUtils import pad_centered
 from src.base.BaseState import BaseState
 
 
+class CPPScenario:
+    def __init__(self):
+        self.target_path = ""
+        self.position_idx = 0
+        self.movement_budget = 100
+
+
 class CPPState(BaseState):
     def __init__(self, map_init: Map):
         super().__init__(map_init)

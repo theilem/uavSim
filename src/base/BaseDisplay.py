@@ -1,11 +1,15 @@
 import io
 import tensorflow as tf
+from tqdm import tqdm
 
 from src.Map.Map import Map
 import numpy as np
 import matplotlib.pyplot as plt
 from skimage.color import rgb2hsv, hsv2rgb
 from matplotlib import patches
+import cv2
+
+from PIL import Image
 
 
 class BaseDisplay:
@@ -39,8 +43,6 @@ class BaseDisplay:
         neither_color = np.ones((area_y_max, area_x_max, 3), dtype=np.float)
         grid_image = green_color * green + nfz_color * nfz + lz_color * lz + neither_color * neither
 
-        # value_map = final_state.coverage * 1.0 + (~final_state.coverage) * 0.75
-
         hsv_image = rgb2hsv(grid_image)
         hsv_image[..., 2] *= value_map.astype('float32')
 
@@ -73,7 +75,7 @@ class BaseDisplay:
         plt.yticks(tick_labels_y)
         plt.axis([0, area_x_max, area_y_max, 0])
         ax.imshow(grid_image.astype(float), extent=[0, area_x_max, area_y_max, 0])
-        plt.axis('off')
+        # plt.axis('off')
 
         obst = env_map.obstacles
         for i in range(area_x_max):
@@ -128,5 +130,37 @@ class BaseDisplay:
         combined_image = tf.image.decode_png(buf.getvalue(), channels=3)
         return tf.expand_dims(combined_image, 0)
 
-    def display_episode(self, map_image, trajectory, plot=False, save_path=None):
+    def create_video(self, map_image, trajectory, save_path, frame_rate, draw_path=True):
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        video = None
+        print("Creating video, if it freezes tap ctrl...")
+        for k in tqdm(range(len(trajectory))):
+            if draw_path:
+                frame = np.squeeze(self.display_episode(map_image, trajectory[:k + 1]).numpy())
+            else:
+                frame = np.squeeze(self.display_state(map_image, trajectory[0][0], trajectory[k][0]).numpy())
+            r = frame[..., 0]
+            g = frame[..., 1]
+            b = frame[..., 2]
+            img = np.stack([b, g, r], axis=2)
+            if not video:
+                height, width, channels = img.shape
+                print("Creating video writer for {}, with the shape {}".format(save_path, (height, width)))
+                video = cv2.VideoWriter(save_path, fourcc, frame_rate, (width, height))
+            video.write(img)
+
+        if not draw_path:
+            frame = np.squeeze(self.display_episode(map_image, trajectory).numpy())
+            r = frame[..., 0]
+            g = frame[..., 1]
+            b = frame[..., 2]
+            img = np.stack([b, g, r], axis=2)
+            video.write(img)
+
+        video.release()
+
+    def display_episode(self, map_image, trajectory, plot=False, save_path=None) -> tf.Tensor:
+        pass
+
+    def display_state(self, env_map, initial_state, state, plot=False) -> tf.Tensor:
         pass

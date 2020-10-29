@@ -77,8 +77,8 @@ class BaseEnvironment:
         self.step_count += 1
         return copy.deepcopy(next_state)
 
-    def test_episode(self):
-        state = copy.deepcopy(self.init_episode())
+    def test_episode(self, scenario=None):
+        state = copy.deepcopy(self.init_episode(scenario))
         self.stats.on_episode_begin(self.episode_count)
         while not state.terminal:
             action = self.agent.get_exploitation_action_target(state)

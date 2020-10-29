@@ -47,8 +47,8 @@ python main.py --dh --gpu --config config/manhattan32_dh.json --id manhattan32_d
 Evaluate a model through Monte Carlo analysis over the random parameter space for the performance indicators 'Successful Landing', 'Collection Ratio', 'Collection Ratio and Landed' as defined in the paper (plus 'Boundary Counter' counting safety controller activations), e.g. for 1000 Monte Carlo iterations:
 
 ```
-python main_mc.py --cpp --weights models/manhattan32_cpp_best --config config/manhattan32_cpp.json --id manhattan32_cpp_mc --samples 1000
-python main_mc.py --dh --weights models/manhattan32_dh_best --config config/manhattan32_dh.json --id manhattan32_dh_mc --samples 1000
+python main_mc.py --cpp --weights example/models/manhattan32_cpp --config config/manhattan32_cpp.json --id manhattan32_cpp_mc --samples 1000
+python main_mc.py --dh --weights example/models/manhattan32_dh --config config/manhattan32_dh.json --id manhattan32_dh_mc --samples 1000
 
 --cpp|--dh                  Activates CPP or DH
 --weights                   Path to weights of trained model
@@ -59,6 +59,14 @@ python main_mc.py --dh --weights models/manhattan32_dh_best --config config/manh
 --show                      Pass '--show True' for individual plots of scenarios and allow plot saving
 ```
 
+For an example run of pretrained agents the following commands can be used:
+```
+python main_scenario.py --cpp --config config/manhattan32_cpp.json --weights example/models/manhattan32_cpp --scenario example/scenarios/manhattan_cpp.json --video
+python main_scenario.py --cpp --config config/urban50_cpp.json --weights example/models/urban32_cpp --scenario example/scenarios/urban_cpp.json --video
+
+python main_scenario.py --dh --config config/manhattan32_dh.json --weights example/models/manhattan32_dh --scenario example/scenarios/manhattan_dh.json --video
+python main_scenario.py --dh --config config/urban50_dh.json --weights example/models/urban50_dh --scenario example/scenarios/urban_dh.json --video
+```
 
 ## Resources
 

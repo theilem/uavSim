@@ -84,3 +84,33 @@ class DHDisplay(BaseDisplay):
             plt.show()
 
         return self.create_tf_image()
+
+    def display_state(self, env_map, initial_state, state, plot=False):
+        fig_size = 5.5
+        fig, ax = plt.subplots(1, 2, figsize=[2 * fig_size, fig_size])
+        ax_traj = ax[0]
+        ax_bar = ax[1]
+
+        value_step = 0.4 / initial_state.device_list.num_devices
+        # Start with value of 200
+        value_map = np.ones(env_map.get_size(), dtype=float)
+        for device in initial_state.device_list.get_devices():
+            value_map -= value_step * self.channel.total_shadow_map[device.position[1], device.position[0]]
+
+        self.create_grid_image(ax=ax_traj, env_map=env_map, value_map=value_map)
+
+        for device in initial_state.device_list.get_devices():
+            ax_traj.add_patch(
+                patches.Circle(np.array(device.position) + np.array((0.5, 0.5)), 0.4, facecolor=device.color,
+                               edgecolor="black"))
+
+        color = "green" if state.landed else "r"
+        plt.scatter(state.position[0] + 0.5, state.position[1] + 0.5,
+                    s=self.marker_size, marker="D", color=color, zorder=10)
+
+        self.draw_bar_plots(state, ax_bar)
+
+        if plot:
+            plt.show()
+
+        return self.create_tf_image()

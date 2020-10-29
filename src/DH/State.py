@@ -4,6 +4,14 @@ from src.StateUtils import pad_centered
 from src.base.BaseState import BaseState
 
 
+class DHScenario:
+    def __init__(self):
+        self.device_idcs = []
+        self.device_data = []
+        self.position_idx = 0
+        self.movement_budget = 100
+
+
 class DHState(BaseState):
     def __init__(self, map_init: Map):
         super().__init__(map_init)

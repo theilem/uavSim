@@ -1,7 +1,7 @@
 import numpy as np
 
 import src.Map.Map as ImageLoader
-from src.CPP.State import CPPState
+from src.CPP.State import CPPState, CPPScenario
 from src.CPP.RandomTargetGenerator import RandomTargetGenerator, RandomTargetGeneratorParams
 from src.base.BaseGrid import BaseGrid, BaseGridParams
 
@@ -37,6 +37,15 @@ class CPPGrid(BaseGrid):
         state.landed = False
         state.terminal = False
 
+        return state
+
+    def create_scenario(self, scenario: CPPScenario):
+        state = CPPState(self.map_image)
+        target = ImageLoader.load_target(scenario.target_path, self.map_image.obstacles)
+        state.reset_target(target)
+        state.position = self.starting_vector[scenario.position_idx]
+        state.movement_budget = scenario.movement_budget
+        state.initial_movement_budget = scenario.movement_budget
         return state
 
     def init_scenario(self, state: CPPState):
