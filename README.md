@@ -31,7 +31,7 @@ tqdm==4.45.0 or newer
 
 ## How to use
 
-Train a new DDQN model with the parameters of your choice in the specified config file for CPP or DH:
+Train a new DDQN model with the parameters of your choice in the specified config file for Coverage Path Planning (CPP) or Data Harvesting (DH):
 
 ```
 python main.py --cpp --gpu --config config/manhattan32_cpp.json --id manhattan32_cpp
