@@ -9,7 +9,7 @@
 
 ## Introduction
 
-This repository contains an implementation of the double deep Q-learning (DDQN) approach to control a UAV on a coverage path planning or data harvesting from IoT sensors mission, including global-local map processing. The corresponding paper ["UAV Path Planning using Global and Local Map Information with Deep Reinforcement Learning"](https://ieeexplore.ieee.org/abstract/document/9659413) is available on IEEExplore. A multi-agent version can be found in ["uav_data_harvesting"](https://github.com/hbayerlein/uav_data_harvesting)
+This repository contains an implementation of the double deep Q-learning (DDQN) approach to control a UAV on a coverage path planning or data harvesting from IoT sensors mission, including global-local map processing. The corresponding paper ["UAV Path Planning using Global and Local Map Information with Deep Reinforcement Learning"](https://ieeexplore.ieee.org/abstract/document/9659413) is available on IEEEXplore. A multi-agent version of the Data Harvesting can be found in ["uav_data_harvesting"](https://github.com/hbayerlein/uav_data_harvesting).
 
 For questions, please contact Mirco Theile via email mirco.theile@tum.de. Please also note that due to github's new naming convention, the 'master' branch is now called 'main' branch.
 
@@ -20,12 +20,12 @@ For questions, please contact Mirco Theile via email mirco.theile@tum.de. Please
 python==3.7 or newer
 numpy==1.18.5 or newer
 keras==2.4.3 or newer
-tensorflow==2.3.0 or newer
+tensorflow==2.5.0 or newer
 matplotlib==3.3.0 or newer
 scikit-image==0.16.2 or newer
 tqdm==4.45.0 or newer
 ```
-
+Developed and tested only on Linux-based systems. In principle, it should also run on Windows, but there might be some compatibility issues.
 
 ## How to use
 
@@ -96,7 +96,7 @@ If using this code for research purposes, please cite:
 }
 ```
 
-for the multi-agent Data Harvesting paper:
+for the (multi-agent) Data Harvesting paper:
 
 [2] H. Bayerlein, M. Theile, M. Caccamo, and D. Gesbert, “Multi-UAV path planning for wireless data harvesting with deep reinforcement learning," IEEE Open Journal of the Communications Society, vol. 2, pp. 1171-1187, 2021.
 
