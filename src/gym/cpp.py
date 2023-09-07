@@ -33,7 +33,7 @@ class RandomTargetGenerator:
 
     def __generate_random_shapes(self, min_shapes, max_shapes):
         img, _ = random_shapes(self.shape, max_shapes, min_shapes=min_shapes, channel_axis=None,
-                               allow_overlap=True, random_seed=np.random.randint(2 ** 32 - 1))
+                               allow_overlap=True, rng=np.random.randint(2 ** 32 - 1))
         # Numpy random usage for random seed unifies random seed which can be set for repeatability
         attempt = np.array(img != 255, dtype=bool)
         return attempt, np.sum(attempt)
@@ -360,7 +360,7 @@ class CPPGym(GridGym):
         return self._camera[state.map_index]
 
     def is_solvable(self, map_image, camera):
-
+        print("test")
         max_steps = self.params.budget_range[1] // 2 - 1
 
         n, m = map_image.original_shape

@@ -102,37 +102,6 @@ class Map:
             previous = min_distance
             temp = min_distance + 1
             t1 = np.roll(temp, shift=1, axis=2)
-            # t2 = np.roll(temp, shift=-1, axis=2)
-            t3 = np.roll(temp, shift=1, axis=3)
-            # t4 = np.roll(temp, shift=-1, axis=3)
-            t = np.stack((min_distance, t1, t3), axis=-1)
-            min_distance = np.min(t, axis=-1)
-            min_distance = np.minimum(min_distance, np.transpose(min_distance, (2, 3, 0, 1)))
-            min_distance = np.where(nfz, np.inf, min_distance)
-
-        min_distance = min_distance[1:-1, 1:-1, 1:-1, 1:-1]
-        min_distance = np.where(min_distance == np.inf, -1, min_distance).astype(int)
-
-        return min_distance
-
-    def calculate_shortest_distance_old(self):
-        print("Calculating shortest distance map")
-        nfz = np.pad(self.nfz, pad_width=((1, 1), (1, 1)), constant_values=1)
-        x, y = nfz.shape
-        nfz = np.expand_dims(np.expand_dims(nfz, axis=0), axis=0)  # [1, 1, x, y]
-        nfz = np.logical_or(np.transpose(nfz, (2, 3, 0, 1)), nfz)
-
-        min_distance = np.ones((x, y, x, y)) * np.inf
-        x_index = np.repeat(np.arange(x), y, axis=0)
-        y_index = np.tile(np.arange(y), x)
-
-        min_distance[x_index, y_index, x_index, y_index] = 0
-        previous = np.zeros_like(min_distance)
-
-        while np.not_equal(previous, min_distance).any():
-            previous = min_distance
-            temp = min_distance + 1
-            t1 = np.roll(temp, shift=1, axis=2)
             t2 = np.roll(temp, shift=-1, axis=2)
             t3 = np.roll(temp, shift=1, axis=3)
             t4 = np.roll(temp, shift=-1, axis=3)
