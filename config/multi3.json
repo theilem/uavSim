@@ -1,0 +1,127 @@
+{
+    "trainer": {
+        "type": "ppo",
+        "params": {
+            "training_steps": 120000000,
+            "gamma": {
+                "base": 0.99,
+                "decay_rate": 0.1,
+                "decay_steps": 500
+            },
+            "rollout_length": 40000,
+            "rollout_gyms": 20,
+            "lam": 0.8,
+            "epsilon": 0.2,
+            "beta": 0.01,
+            "normalize_advantage": true,
+            "batch_size": 128,
+            "rollout_epochs": 5,
+            "actor_lr": {
+                "base": 3e-05,
+                "decay_rate": 0.5,
+                "decay_steps": 500000
+            },
+            "critic_lr": {
+                "base": 0.0001,
+                "decay_rate": 0.5,
+                "decay_steps": 500000
+            }
+        }
+    },
+    "gym": {
+        "type": "cpp",
+        "params": {
+            "map_path": [
+                "res/suburban38.png",
+                "res/tum50.png",
+                "res/castle50.png"
+            ],
+            "min_size": 50,
+            "budget_range": [
+                50,
+                100
+            ],
+            "start_landed": true,
+            "safety_controller": false,
+            "timeout_steps": [
+                1200,
+                1500,
+                1500
+            ],
+            "recharge": true,
+            "charge_amount": 2.0,
+            "rewards": {
+                "boundary_penalty": 0.0,
+                "empty_battery_penalty": 5.0,
+                "movement_penalty": 0.02,
+                "cell_reward": 0.01,
+                "completion_reward": 0.0
+            },
+            "rendering": {
+                "render": false,
+                "draw_stats": true,
+                "render_fps": 0,
+                "env_pixels": 800,
+                "normal_state": {
+                    "draw_trajectory": true,
+                    "draw_decomp": true,
+                    "draw_view": false
+                },
+                "terminal_state": {
+                    "draw_trajectory": true,
+                    "draw_decomp": true,
+                    "draw_view": false
+                }
+            },
+            "action_masking": "invariant",
+            "position_history": true,
+            "position_history_alpha": 0.99,
+            "random_layer": false,
+            "target_generator": {
+                "coverage_range": [
+                    0.2,
+                    0.5
+                ],
+                "shape_range": [
+                    3,
+                    8
+                ]
+            },
+            "camera_half_length": 2
+        }
+    },
+    "logger": {
+        "loss_period": 1000,
+        "evaluation_period": 1000000,
+        "evaluation_start": 1000000,
+        "evaluation_episodes": 10,
+        "save_period": 20000,
+        "log_episodes": false
+    },
+    "evaluator": {
+        "stochastic": false,
+        "eval_maps": -1
+    },
+    "agent": {
+        "type": "ac",
+        "params": {
+            "model": {
+                "type": "glob_loc",
+                "params": {
+                    "conv_layers": 4,
+                    "conv_kernel_size": 3,
+                    "conv_kernels": 32,
+                    "hidden_layer_size": 256,
+                    "hidden_layer_num": 3
+                }
+            }
+        }
+    },
+    "observation": {
+        "type": "glob_loc",
+        "params": {
+            "global_map_scaling": 3,
+            "local_map_size": 17
+        }
+    }
+}
