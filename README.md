@@ -14,7 +14,7 @@ in the icar branch.
 
 ## Introduction
 
-This repository contains the implementation of the power-constrained coverage path planning (CPP) with recharge problem
+This repository contains the implementation of the [power-constrained coverage path planning (CPP) with recharge problem](https://arxiv.org/abs/2309.03157)
 and the proposed PPO-based deep reinforcement learning (DRL) solution. The DRL approach utilizes map-based observations,
 preprocessed as global and local maps, action masking to ensure safety, discount factor scheduling to optimize the
 long-horizon problem, and position history observations to avoid state loops.
