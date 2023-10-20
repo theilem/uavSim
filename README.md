@@ -34,7 +34,7 @@ For questions, please contact Mirco Theile via email mirco.theile@tum.de.
 ```
 tensorflow~=2.11.0
 opencv-python==4.7.0.68
-scikit-image==0.19.3
+scikit-image==0.21.0
 gymnasium==0.27.0
 pygame==2.5.1
 tqdm~=4.64.1
