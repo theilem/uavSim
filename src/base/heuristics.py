@@ -12,23 +12,23 @@ class GreedyHeuristic:
         self.gym = gym
         self.max_budget = self.gym.max_budget
 
-    def get_action(self, obs, state=None):
+    def get_action(self, state=None):
         if state is None:
             state = self.gym.state
         x, y = self.gym.map_image(state).original_shape
 
         position = state.position
         # Charge fully
-        if obs["landed"]:
-            if obs["budget"] >= self.max_budget:
+        if state.landed:
+            if state.budget >= self.max_budget:
                 return np.array((5,))  # Take off action
             return np.array((6,))  # Charging action
         # Find the closest target cell from which the landing zone can be reached in time
-        budget = obs["budget"]
-        landing = self.gym.map_image(state).landing_map
-        distance_map = self.gym.map_image(state).distance_map
+        budget = state.budget
+        landing = self.gym.map_image(state).landing_distances()
+        distance_map = self.gym.map_image(state).all_distances()
         distances = distance_map[position[0], position[1]]
-        targets = np.logical_and(state.map[:x, :y, 3], np.logical_not(state.map[:x, :y, 4]))
+        targets = state.map[:x, :y, 3]
         # Calculate all the ways a target under nfzs can be seen
         reachable = np.logical_and(landing + distances < budget, distances > 0)
         target_idx = np.array(np.where(np.logical_and(targets, np.logical_not(reachable)))).transpose()
@@ -44,7 +44,7 @@ class GreedyHeuristic:
 
             # Seems like there is no directly reachable target. Find landing zone that is closer.
             reachable_landings = np.logical_and(np.logical_and(distances < budget, distances >= 0),
-                                                self.gym.map_image(state).start_land_zone[:x, :y])
+                                                self.gym.map_image(state).slz)
 
             landing_idx = np.array(np.nonzero(reachable_landings))
             target_idx = np.array(np.nonzero(targets))

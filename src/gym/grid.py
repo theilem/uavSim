@@ -10,6 +10,8 @@ import pygame
 
 from src.gym.utils import Map, get_arrow_polygon, draw_text, draw_shape_matrix
 
+from src.trainer.observation import ObservationFunctionFactory
+
 
 @dataclass
 class GridStateRenderParams:
@@ -40,6 +42,7 @@ class GridGym(gym.Env):
     class Params:
         map_path: Union[str, List[str]] = "res/manhattan32_mod.png"
         min_size: int = 50  # Maps are padded to this size if they are smaller
+        add_rotated_maps: bool = False
         budget_range: (int, int) = (50, 75)
         start_landed: bool = True
         safety_controller: bool = True  # If True, actions that cause an immediate crash are rejected
@@ -56,9 +59,10 @@ class GridGym(gym.Env):
         action_masking: str = "invariant"  # ["none", "invalid", "immediate", "invariant"]
 
         # Position History
-        position_history: bool = True
         position_history_alpha: float = 0.99
-        random_layer: bool = False
+
+        # Observation function
+        obs_function: ObservationFunctionFactory.default_param_type() = ObservationFunctionFactory.default_params()
 
     @dataclass
     class Init:
@@ -71,17 +75,18 @@ class GridGym(gym.Env):
         init = None
 
         map_index = 0
-        environment = None
         map = None
-        centered_map = None
         position_history = None
+
+        action_mask = None
 
         position = np.zeros(2)
         budget = 0
-        truncated = False
+        infeasible = False
         crashed = False
         landed = False
         terminated = False
+        truncated = False
 
         boundary_counter = 0
         charging_steps = 0
@@ -97,6 +102,7 @@ class GridGym(gym.Env):
 
         self.shape = np.zeros((2,))
         self._map_image = []
+        self.map_array = None
         self.map_path = params.map_path
         if not isinstance(self.map_path, list):
             self.map_path = [self.map_path]
@@ -116,6 +122,7 @@ class GridGym(gym.Env):
             5: np.array([0, 0]),
             6: np.array([0, 0])
         }
+
         self.action_to_name = {
             0: "right",
             1: "down",
@@ -126,26 +133,13 @@ class GridGym(gym.Env):
             6: "charge"
         }
 
-        self.center = self.shape - 1
-
         self.state = self.create_state()
-        self.initialize_map(self.state, map_index=0)
-
-        self.state.centered_map = self.pad_centered(self.state)
-        if self.params.position_history:
-            self.state.position_history = np.zeros((*self.state.centered_map.shape[:2], 1))
-            self.state.position_history[self.center[0], self.center[1]] = 1
-
-        observed_maps = self.get_observed_maps(self.state)
 
         num_actions = len(self.action_to_direction)
         self.action_space = spaces.Discrete(num_actions)
-        self.observation_space = spaces.Dict({
-            "map": spaces.Box(low=0, high=1, shape=observed_maps.shape, dtype=bool),
-            "budget": spaces.Box(low=0, high=self.params.budget_range[1], shape=(1,), dtype=int),
-            "landed": spaces.Box(low=0, high=1, shape=(1,), dtype=bool),
-            "mask": spaces.Box(low=0, high=1, shape=(1, num_actions), dtype=bool)
-        })
+
+        self.observation_function = ObservationFunctionFactory.create(params.obs_function,
+                                                                      max_budget=params.budget_range[-1])
 
         self.mask_levels = ["none", "valid", "immediate", "invariant"]
         self.masking_level = self.mask_levels.index(self.params.action_masking)
@@ -155,80 +149,69 @@ class GridGym(gym.Env):
         self.render_registry = []
         self.render_registry_offset = 0
         self.layer_order = ["environment", "trajectory", "agent"]
-        self.last_map_id = -1
+        self.last_obst = np.zeros(self.shape)
         self.obstacle_canvas = None
         self.use_pygame_display = False
         self.window = None
         self.clock = None
 
-    @property
-    def padding_values(self):
-        return [0, 1, 1]
+    def close(self):
+        pass
 
-    def get_observed_maps(self, state):
-        maps = [state.centered_map]
-        if self.params.position_history:
-            maps.append(state.position_history)
-        if self.params.random_layer:
-            maps.append(np.random.uniform(size=(*state.centered_map.shape[:2], 1)))
+    def step_multi(self, states, actions):
 
-        observed_maps = np.concatenate(maps, axis=-1)
-        return np.expand_dims(observed_maps, 0)
+        rewards = [self._step(state, action) for state, action in zip(states, actions)]
+        observes = self.observation_function.observe_multi(states)
+        reward = np.array(rewards)
+        terminated = np.array([state.terminated for state in states])
+        truncated = np.array([state.truncated for state in states])
+        infos = [self.get_info(state) for state in states]
 
-    def pad_centered(self, state):
-        padding = self.shape - 1
-        pad_width = np.array([padding - state.position, state.position]).transpose().astype(int)
-        layers = []
-        for k, layer in enumerate(np.moveaxis(state.map, 2, 0)):
-            layers.append(
-                np.pad(layer, pad_width=pad_width, mode='constant', constant_values=self.padding_values[k]))
-
-        centered_map = np.stack(layers, axis=-1)
-        return centered_map
-
-    def pad_layer(self, layer, position, padding_value=0):
-        padding = self.shape - 1
-        pad_width = np.array([padding - position, position]).transpose().astype(int)
-        return np.pad(layer, pad_width=pad_width, mode='constant', constant_values=padding_value)
+        return observes, reward, terminated, truncated, infos
 
     def step(self, action, state=None):
         if state is None:
             state = self.state
 
-        self.motion_step(state, action)
-        reward = self.get_rewards(state)
-        state.episodic_reward += reward
+        reward = self._step(state, action)
 
         self.render(state=state)
 
         return self.get_obs(state), reward, state.terminated, state.truncated, self.get_info(state)
 
+    def _step(self, state, action):
+        if isinstance(action, np.ndarray):
+            action = action[0]
+        self.motion_step(state, action)
+        reward = self.get_rewards(state)
+        state.episodic_reward += reward
+        state.truncated = state.steps >= self.timeout_steps(state)
+        return reward
+
     def get_rewards(self, state):
         rewards = -self.params.rewards.movement_penalty
-        if state.truncated:
+        if state.infeasible:
             rewards -= self.params.rewards.boundary_penalty
         if state.crashed:
             rewards -= self.params.rewards.empty_battery_penalty
         return rewards
 
     def motion_step(self, state, action):
-        old_position = state.position.copy()
-        action = action[0]
 
         # Evaluate individual motions
         if state.crashed:
             return
         if action == 4:
             if not self.can_land(state):
-                state.truncated = True
+                state.infeasible = True
             else:
                 state.landed = True
         elif action == 5:
             if state.landed:
                 state.landed = False
-                state.truncated = False
+                state.infeasible = False
             else:
-                state.truncated = True
+                state.infeasible = True
         elif action == 6:
             if self.params.recharge and state.landed:
                 # Already landed and charging
@@ -236,42 +219,41 @@ class GridGym(gym.Env):
                 state.budget = min(state.budget, self.params.budget_range[1] + 1)  # Constrain to max battery
                 state.charging_steps += 1
             else:
-                state.truncated = True
+                state.infeasible = True
         else:
             if state.landed:
-                state.truncated = True
+                state.infeasible = True
             else:
                 motion = self.action_to_direction[action]
-                idx = self.center + motion
+                idx = state.position + motion
                 # Check if action is safe
-                state.truncated = state.centered_map[idx[0], idx[1], 1]
-                if not state.truncated:
+                state.infeasible = not self.in_bounds(idx) or state.map[idx[0], idx[1], 1] or (
+                        state.map[idx[0], idx[1], 0] and state.map[idx[0], idx[1], 2])
+                if not state.infeasible:
                     # Apply motion
                     state.position += motion
 
-        motion = state.position - old_position
-        state.centered_map = np.roll(state.centered_map, shift=-motion, axis=[0, 1])
+        state.position_history *= self.params.position_history_alpha
+        state.position_history[state.position[0], state.position[1]] = 1
 
-        if self.params.position_history:
-            state.position_history = np.roll(state.position_history, shift=-motion, axis=[0, 1])
-            state.position_history *= self.params.position_history_alpha
-            state.position_history[self.center[0], self.center[1]] = 1
-
-        state.boundary_counter += int(state.truncated)
+        state.boundary_counter += int(state.infeasible)
         # Always consume battery
         state.budget -= 1
         state.budget = max(state.budget, 0)
         state.crashed = state.budget <= 0 and not state.landed
         if not self.params.safety_controller:
-            state.crashed = state.crashed or state.truncated
-        state.truncated = state.truncated or state.crashed
+            state.crashed = state.crashed or state.infeasible
+        state.infeasible = state.infeasible or state.crashed
         state.steps += 1
         state.trajectory.append([copy.deepcopy(state.position), copy.deepcopy(state.landed)])
 
         state.terminated = state.crashed or state.landed and self.objective_complete(state)
 
-    def can_land(self, state):
-        can_land = state.centered_map[self.center[0], self.center[1], 0] and not state.landed
+        state.action_mask = self.get_action_masks(state)
+
+    @staticmethod
+    def can_land(state):
+        can_land = state.map[state.position[0], state.position[1], 0] and not state.landed
         return can_land
 
     def reset(self, state=None, seed=None, options=None, init=None, map_index=None):
@@ -291,7 +273,7 @@ class GridGym(gym.Env):
     def reset_state(self, state, init: Init):
         state.position = init.position.copy()
         state.budget = init.budget
-        state.truncated = False
+        state.infeasible = False
         state.crashed = False
         state.landed = self.params.start_landed
         state.terminated = False
@@ -299,13 +281,11 @@ class GridGym(gym.Env):
         state.charging_steps = 0
         state.episodic_reward = 0
         state.steps = 0
-        state.trajectory = []
-        state.centered_map = self.pad_centered(state)
+        state.action_mask = self.get_action_masks(state)
         state.trajectory = [[copy.deepcopy(state.position), copy.deepcopy(state.landed)]]
 
-        if self.params.position_history:
-            state.position_history = np.zeros((*state.centered_map.shape[:2], 1))
-            state.position_history[self.center[0], self.center[1]] = 1
+        state.position_history = np.zeros_like(state.map[..., 0], dtype=float)
+        state.position_history[state.position[0], state.position[1]] = 1
 
     def generate_init(self, map_name=None) -> Init:
         if map_name is not None:
@@ -313,9 +293,9 @@ class GridGym(gym.Env):
         else:
             map_index = np.random.randint(len(self._map_image))
             map_name = self.map_names[map_index]
-        position_mask = self._map_image[map_index].start_land_zone.astype(float)
-        candidates = np.argsort(np.reshape(np.random.uniform(0, 1, size=self.shape) * position_mask, (-1,)))
-        position = np.transpose(np.array(np.unravel_index(candidates[-1], self.shape)))
+        position_mask = (self._map_image[map_index].slz & ~self._map_image[map_index].obst).astype(float)
+        candidates = np.argsort(np.reshape(np.random.uniform(0, 1, size=position_mask.shape) * position_mask, (-1,)))
+        position = np.transpose(np.array(np.unravel_index(candidates[-1], position_mask.shape)))
         budget = np.round(np.random.uniform(low=self.params.budget_range[0], high=self.params.budget_range[1],
                                             size=1))[0]
         return GridGym.Init(position=position, budget=budget, map_name=map_name)
@@ -331,12 +311,7 @@ class GridGym(gym.Env):
         return state.landed and self.objective_complete(state)
 
     def get_obs(self, state):
-        return {
-            "map": np.expand_dims(state.centered_map, 0),
-            "budget": np.reshape(state.budget, (1, 1)),
-            "landed": np.reshape(state.landed, (1, 1)),
-            "mask": np.expand_dims(self.get_action_masks(state), 0)
-        }
+        return self.observation_function.observe(state)
 
     def get_action_masks(self, state):
 
@@ -352,25 +327,26 @@ class GridGym(gym.Env):
                 mask[4] = False
                 mask[6] = state.budget < self.params.budget_range[1]
             else:
-                mask[4] = state.centered_map[self.center[0], self.center[1], 0]
+                mask[4] = state.map[state.position[0], state.position[1], 0]
                 mask[5] = False
                 mask[6] = False
-        # Immediate Masking
-        if level > 1:
-            for a in range(4):
-                target = self.center + self.action_to_direction[a]
-                if state.centered_map[target[0], target[1], 1]:
-                    mask[a] = False
-        # Invariant Masking
-        if level > 2:
-            if state.budget < 2:
-                mask[5] = False  # Cannot take off with too little battery
+            # Immediate Masking
+            if level > 1:
+                for a in range(4):
+                    target = state.position + self.action_to_direction[a]
+                    if not self.in_bounds(target):
+                        mask[a] = False
+                    elif state.map[target[0], target[1], 1] or (state.map[target[0], target[1], 0] and state.map[target[0], target[1], 2]):
+                        mask[a] = False
+                    elif level > 2:
+                        lm = self.landing_map(state)
+                        if (target >= lm.shape[:2]).any() or state.budget <= lm[target[0], target[1]]:
+                            mask[a] = False
+                # Invariant Masking
+                if level > 2:
+                    if state.budget < 2:
+                        mask[5] = False  # Cannot take off with too little battery
 
-            for a in range(4):
-                target_position = np.clip(state.position + self.action_to_direction[a], (0, 0),
-                                          np.array(self.landing_map(state).shape) - 1)
-                if state.budget <= self.landing_map(state)[target_position[0], target_position[1]]:
-                    mask[a] = False
         return mask
 
     def get_info(self, state=None):
@@ -418,16 +394,17 @@ class GridGym(gym.Env):
         if params.draw_stats:
             window_shape[0] = max(window_shape[0], window_shape[0] + params.env_pixels // 4)
         self.render_registry_offset = window_shape[0]
-        for render in self.render_registry:
-            shape = render["shape"]
-            offset = render["offset"]
+        if params.addons:
+            for render in self.render_registry:
+                shape = render["shape"]
+                offset = render["offset"]
 
-            if offset is None:
-                window_shape[0] += shape[0]
-                window_shape[1] = max(window_shape[1], shape[1])
-            else:
-                window_shape[0] = max(window_shape[0], offset[0] + shape[0])
-                window_shape[1] = max(window_shape[1], offset[1] + shape[1])
+                if offset is None:
+                    window_shape[0] += shape[0]
+                    window_shape[1] = max(window_shape[1], shape[1])
+                else:
+                    window_shape[0] = max(window_shape[0], offset[0] + shape[0])
+                    window_shape[1] = max(window_shape[1], offset[1] + shape[1])
 
         return window_shape
 
@@ -528,11 +505,12 @@ class GridGym(gym.Env):
         return canvas
 
     def draw_obstacles(self, state, canvas_shape, pix_size):
-        if self.last_map_id != state.map_index:
+        x, y = self.map_image(state).original_shape
+        obst = state.map[:x, :y, 2]
+        if not np.array_equal(obst.shape, self.last_obst.shape) or not np.array_equal(obst, self.last_obst):
             self.obstacle_canvas = pygame.Surface(canvas_shape, pygame.SRCALPHA, 32)
             self.obstacle_canvas.fill((255, 255, 255, 0))
-            x, y = self.map_image(state).original_shape
-            obst = state.map[:x, :y, 2]
+
             nfz = state.map[:x, :y, 1]
             low_obst = np.logical_and(obst, np.logical_not(nfz))
             high_obst = np.logical_and(obst, nfz)
@@ -546,14 +524,14 @@ class GridGym(gym.Env):
             self.obstacle_canvas.blit(draw_shape_matrix(low_obst, canvas_shape, pix_size, fill=None,
                                                         stroke=(0, 0, 0),
                                                         stroke_width=stroke_width // 4 * 2), (0, 0))
-            self.last_map_id = state.map_index
+            self.last_obst = obst
         return self.obstacle_canvas
 
     def draw_agent(self, state, canvas_shape):
         canvas = pygame.Surface(canvas_shape, pygame.SRCALPHA, 32)
         pix_size = self.pix_size(state)
         color = (0, 180, 0)
-        if state.truncated:
+        if state.infeasible:
             color = (255, 180, 0)
         if state.crashed:
             color = (180, 0, 0)
@@ -657,7 +635,26 @@ class GridGym(gym.Env):
         if max_size[0] < self.params.min_size:
             max_size = [self.params.min_size] * 2
         self.pad_maps_to_size(max_size)
+
+        if self.params.add_rotated_maps:
+            old_maps = copy.deepcopy(self._map_image)
+            self._map_image = []
+            for m in old_maps:
+                # compute all model elements or check if they are already computed
+                m.all_distances()  # compute all distances
+                m.landing_distances()  # compute landing distances
+                m.shadowing()  # compute shadowing
+
+                m = copy.deepcopy(m)
+                m.pad_model(max_size)
+                self._map_image.append(copy.deepcopy(m))
+                self._map_image.append(copy.deepcopy(m.rotate_90()))
+                self._map_image.append(copy.deepcopy(m.rotate_90()))
+                self._map_image.append(copy.deepcopy(m.rotate_90()))
         self.shape = np.array(max_size)
+
+        self.map_array = np.stack([m.map_data for m in self._map_image],
+                                  axis=0)
 
     def pad_maps_to_size(self, size):
         for m in self._map_image:
@@ -679,8 +676,7 @@ class GridGym(gym.Env):
         if map_index is None:
             map_index = np.random.randint(len(self._map_image))
         state.map_index = map_index
-        layers = [self.map_image(state).start_land_zone, self.map_image(state).nfz, self.map_image(state).obstacles]
-        state.environment = np.stack(layers, axis=-1)
+        state.map = self.map_image(state).map_data[..., [2, 0, 1]]
 
     def initialize_map(self, state, map_index=None):
         self._initialize_map(state, map_index)
@@ -703,6 +699,7 @@ class GridGym(gym.Env):
 
     def create_state(self):
         return GridGym.State()
+
     @staticmethod
     def draw_tile(size, name, value_string):
         s = (size, size)
@@ -721,7 +718,7 @@ class GridGym(gym.Env):
         return self.map_layers.index(name)
 
     def map_layer(self, state, name):
-        return state.centered_map[..., self.map_layer_id(name)]
+        return state.map[..., self.map_layer_id(name)]
 
     def map_image(self, state=None):
         if state is None:
@@ -736,7 +733,7 @@ class GridGym(gym.Env):
         return [map_image.name for map_image in self._map_image]
 
     def landing_map(self, state=None):
-        return self.map_image(state).landing_map
+        return self.map_image(state).landing_distances()
 
     def timeout_steps(self, state=None):
         if state is None:
@@ -755,6 +752,18 @@ class GridGym(gym.Env):
     def centered_shape(self):
         return self.shape * 2 - 1
 
+    @property
+    def observation_space(self):
+        state = self.create_state()
+        self.reset(state=state)
+        return self.observation_function.get_observation_space(state)
+
     def pix_size(self, state=None):
         return self.params.rendering.env_pixels / self.map_image(state).original_shape[0]
 
+    def in_bounds(self, target):
+        if (target < 0).any():
+            return False
+        if (target >= self.shape).any():
+            return False
+        return True

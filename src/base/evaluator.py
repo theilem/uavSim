@@ -8,12 +8,18 @@ from typing import Tuple, List, Union, Optional
 
 import cv2
 import numpy as np
+import pandas as pd
 import pygame
+from matplotlib import pyplot as plt
+from scipy.ndimage import convolve
 from tqdm import tqdm
+import seaborn as sns
 
 from src.base.heuristics import GreedyHeuristic
+from src.gym.cpp import SimpleSquareCamera, CPPRenderParams
+from src.trainer.utils import dict_slice_set
 from utils import get_value_user, NpEncoder, find_scenario, find_config_model
-from src.gym.utils import draw_text, Map
+from src.gym.utils import draw_text, Map, get_visibility_map, is_solvable
 import tensorflow as tf
 
 
@@ -58,11 +64,11 @@ class Evaluator:
 
         gym_state = self.gym.create_state()
 
-        state, info = self.gym.reset(state=gym_state, init=init, map_name=map_name)
-        while not info["timeout"]:
-            action = self.get_action(state, gym_state=gym_state)
-            state, reward, terminal, truncated, info = self.gym.step(state=gym_state, action=action)
-            if terminal:
+        obs, info = self.gym.reset(state=gym_state, init=init, map_name=map_name)
+        while True:
+            action = self.get_action(obs, state=gym_state)
+            obs, reward, terminal, truncated, info = self.gym.step(state=gym_state, action=action)
+            if terminal or truncated:
                 break
 
         init = gym_state.init
@@ -81,10 +87,9 @@ class Evaluator:
 
         gym_init_ids = list(range(n))
         next_init = n
-        states = [self.gym.reset(state=gym_state, init=init)[0] for gym_state, init in zip(gym_states, inits)]
-        state = {key: np.concatenate([s[key] for s in states], axis=0) for key in states[0].keys()}
 
-        obs = self.trainer.observation_function(state)
+        observes = [self.gym.reset(state=gym_state, init=init)[0] for gym_state, init in zip(gym_states, inits)]
+        obs = {key: np.concatenate([o[key] for o in observes], axis=0) for key in observes[0].keys()}
 
         status = [None] * num_inits
         active = [True] * n
@@ -92,49 +97,44 @@ class Evaluator:
         while any(active):
 
             actions, _ = self.trainer.get_action(obs, greedy=not self.stochastic)
-
-            next_states, reward, terminated, truncated, infos = zip(
-                *[self.gym.step(state=gym_state, action=np.expand_dims(actions[k], 0)) for k, gym_state in
-                  enumerate(gym_states)])
-            next_states = list(next_states)
+            next_observes, reward, terminated, truncated, infos = self.gym.step_multi(gym_states, actions)
 
             for l in range(n):
                 if not active[l]:
                     continue
                 terminal = terminated[l]
+                trunc = truncated[l]
                 info = infos[l]
-                if terminal or info["timeout"]:
+                if terminal or trunc:
                     bar.update(1)
                     status[gym_init_ids[l]] = info
                     if next_init >= num_inits:
                         active[l] = False
                         continue
-                    state, _ = self.gym.reset(state=gym_states[l], init=inits[next_init])
+                    o, _ = self.gym.reset(state=gym_states[l], init=inits[next_init])
                     gym_init_ids[l] = next_init
                     next_init += 1
-                    next_states[l] = state
+                    dict_slice_set(next_observes, l, o)
 
-            state = {key: np.concatenate([s[key] for s in next_states], axis=0) for key in next_states[0].keys()}
-            obs = self.trainer.observation_function(state)
+            obs = next_observes
 
         return status
 
     def evaluate_episode_heuristic(self, init):
         gym_state = self.gym.create_state()
-        state, info_heur = self.gym.reset(state=gym_state, init=init)
+        obs, info_heur = self.gym.reset(state=gym_state, init=init)
         while not info_heur["timeout"]:
-            action = self.heuristic.get_action(state, state=gym_state)
-            state, reward, terminal, truncated, info_heur = self.gym.step(state=gym_state, action=action)
+            action = self.heuristic.get_action(gym_state)
+            obs, reward, terminal, truncated, info_heur = self.gym.step(state=gym_state, action=action)
             if np.all(terminal):
                 break
         return info_heur
 
-    def get_action(self, state, gym_state=None):
+    def get_action(self, obs, state=None):
         if self.use_heuristic:
-            return self.heuristic.get_action(state, state=gym_state)
+            return self.heuristic.get_action(state=state)
         if self.trainer is None:
             return None
-        obs = self.trainer.observation_function(state)
         return self.trainer.get_action(obs, greedy=not self.stochastic)[0]
 
     def evaluate_multiple_episodes(self, n):
@@ -175,9 +175,9 @@ class InteractiveEvaluator(Evaluator):
                             offset=(self.render_params.env_pixels, self.render_params.env_pixels // 2))
 
     def evaluate_interactive(self, init=None):
-
-        while True:
-            state, info = self.gym.reset(init=init)
+        self.running = True
+        while self.running:
+            obs, info = self.gym.reset(init=init)
             self.gym.render(params=self.render_params)
             skip_show = False
             while not info["timeout"]:
@@ -215,6 +215,8 @@ class InteractiveEvaluator(Evaluator):
                         elif keys[pygame.K_r]:
                             self.mode = "run"
 
+                if not self.running:
+                    return
                 if terminate:
                     break
                 if self.mode == "human":
@@ -224,14 +226,14 @@ class InteractiveEvaluator(Evaluator):
                     action = np.array((action,))
 
                 if self.mode != "human" or action < 0:
-                    action = self.get_action(state)
+                    action = self.get_action(obs)
 
                 if action is None:
                     self.draw_message_blocking("Not Available", t=1.0)
                     self.mode = "human"
                     continue
 
-                state, reward, terminal, truncated, info = self.gym.step(action)
+                obs, reward, terminal, truncated, info = self.gym.step(action)
 
                 if self.mode != "blind" or terminal or info["timeout"]:
                     self.gym.render(params=self.render_params)
@@ -253,6 +255,9 @@ class InteractiveEvaluator(Evaluator):
                         keys = pygame.key.get_pressed()
                         if self.update_with_key(keys):
                             self.gym.render(params=self.render_params)
+
+                        if not self.running:
+                            return
                         if keys[pygame.K_y]:
                             terminate = True
                             init = None
@@ -344,7 +349,7 @@ class InteractiveEvaluator(Evaluator):
     def update_with_key(self, keys):
         state_render = self.render_params.terminal_state if self.gym.state.terminated else self.render_params.normal_state
         if keys[pygame.K_q]:
-            exit(0)
+            self.running = False
         elif keys[pygame.K_h]:
             self.show_help = True
             self.draw_message_blocking("", t=None)
@@ -390,6 +395,9 @@ class InteractiveEvaluator(Evaluator):
         elif keys[pygame.K_j]:
             self.start_editor()
             return True
+        elif keys[pygame.K_i]:
+            self.start_generator()
+            return True
         elif keys[pygame.K_k]:
             new_info = self.gym.get_info(self.gym.state)
             if new_info != self.previous_stats:
@@ -414,6 +422,42 @@ class InteractiveEvaluator(Evaluator):
             cv2.imwrite(f"{directory_name}/{filename}.png", frame)
             del frame
             self.draw_message_blocking(f"Saved as {directory_name}/{filename}.png", t=2)
+        elif keys[pygame.K_a]:
+            obs = self.gym.get_obs(self.gym.state)
+            all_actions = self.trainer.agent.actor.predict_equiv(obs)  # [1, 4, 7]
+            all_values = self.trainer.agent.critic.predict_equiv(obs)  # [1, 4]
+
+            a = all_actions.numpy()[0, :, :4]  # Only movement actions
+            v = all_values.numpy()[0]
+
+            # Convert to pandas dataframe by assigning columns with action names and rows with rotation indexes
+            a = pd.DataFrame(a, columns=["east", "south", "west", "north"], index=range(4)).unstack().reset_index()
+            a = a.rename(columns={"level_0": "action", "level_1": "rotation_index", 0: "probability"})
+            print(a)
+            # Create barplot showing for each action a bar for each rotation index
+            sns.catplot(a, x="rotation_index", y="probability", hue="action", kind="bar")
+            plt.show()
+
+            print("Actions")
+            print(a.round(2))
+            print("Values")
+            print(v.round(2))
+        elif keys[pygame.K_p]:
+            # Check if shift pressed
+            if pygame.key.get_mods() & pygame.KMOD_SHIFT:
+                state_name = self.get_user_input("Load state")
+                if state_name is None:
+                    return False
+                with open(f"{state_name}.pickle", 'rb') as f:
+                    self.gym.state = pickle.load(f)
+                    self.gym.render(params=self.render_params)
+            else:
+                state_name = self.get_user_input("Store state")
+                if state_name is None:
+                    return False
+                with open(f"{state_name}.pickle", 'wb') as f:
+                    pickle.dump(self.gym.state, f)
+
         return False
 
     def draw_overlay(self, canvas_shape, obs):
@@ -516,7 +560,7 @@ class InteractiveEvaluator(Evaluator):
 
         return canvas
 
-    def record_episode(self, init, name, fps=15):
+    def record_episode(self, init, name, fps=25):
         self.gym.params.rendering.render = True
 
         for dir_name in ["screenshots", "videos", "stats"]:
@@ -566,7 +610,7 @@ class InteractiveEvaluator(Evaluator):
             init = self.gym.generate_init(map_name=m)
             init.target = np.zeros_like(init.target)
             self.gym.reset(init=init)
-            self.gym.state.map[..., 4] = True
+            self.gym.state.coverage = np.ones_like(init.target)
 
             canvas = self.gym.draw_map(self.gym.state, (800, 800))
             frame = self.get_frame(True, canvas)
@@ -583,6 +627,133 @@ class InteractiveEvaluator(Evaluator):
             frame = frame[:, :frame.shape[0]]
         return frame
 
+    def start_generator(self):
+        running = True
+        automatic = False
+
+        size = self.get_user_input("New map size")
+        if size is None:
+            return
+        size = int(size)
+        self.gym.map_image().original_shape = (size, size)
+        old_map_size = (size, size)
+        self.gym.state.map[:size, :size, :] = False
+        map_size = np.array(self.gym.map_image().original_shape)
+        self.gym.state.init.target[:, :] = True
+        filled = np.zeros((size, size), dtype=bool)
+
+        initial = np.random.randint(size, size=2)
+        filled[initial[0], initial[1]] = True
+        self.gym.state.init.target[initial[0], initial[1]] = False
+
+        while running:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    exit()
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_q:
+                        map_name = self.get_user_input("Map changed, store as new map? res/[].png")
+                        if map_name is not None:
+                            filename = f"res/{map_name}.png"
+                            map_data = self.gym.state.map[:map_size[0], :map_size[1], [0, 2, 1]].transpose(1, 0, 2)
+                            cv2.imwrite(filename, (map_data * 255).astype(int))
+                            if self.gym.add_map(filename) != -1:
+                                running = False
+                                self.gym.map_image().original_shape = old_map_size
+                                self.gym.state.init.target = self.gym.state.map[:, :, 3]
+                                self.gym.state.init.map_name = map_name
+                                self.gym.reset(init=self.gym.state.init)
+                            else:
+                                print("Map not solvable, fix")
+                        else:
+                            cont = self.get_user_input("continue? yes: enter, no: escape")
+                            running = cont is not None
+                    elif event.key == pygame.K_s:
+                        # Get adjacent to free
+                        self.generate_cell(filled, size)
+                    elif event.key == pygame.K_y:
+                        automatic = not automatic
+                    elif event.key == pygame.K_e:
+                        while not self.generate_cell(filled, size):
+                            pass
+                        automatic = False
+            if automatic:
+                for _ in range(10):
+                    if self.generate_cell(filled, size):
+                        automatic = False
+                        break
+
+            self.gym.last_map_id = -1
+            self.gym.render(params=self.render_params)
+
+    def generate_cell(self, filled, size):
+        m = self.gym.state.map[:size, :size, :3]
+        kernel = np.array([[0, 1, 0], [1, 1, 1], [0, 1, 0]])
+        values = ([0, 0, 0], [0, 1, 0], [0, 0, 1], [0, 1, 1])
+
+        if np.all(filled):
+            # prune single cells
+            occupied = np.any(m, axis=-1)
+            alone = convolve(occupied.astype(int), kernel, mode='reflect') == 1
+            remove = np.random.uniform(size=(size, size))
+            m = np.where((alone & (remove < 0.95))[:, :, None], False, m)
+
+            free = ~np.any(m, axis=-1)
+            free_idx = np.array(np.nonzero(free))
+
+            i = np.random.choice(range(free_idx.shape[1]))
+            landing_cell = free_idx[:, i]
+            m[landing_cell[0], landing_cell[1], 0] = True
+
+            map_data = m[:, :, [1, 2, 0]]
+
+            map_ = Map(map_data=map_data, name="gen")
+
+            visibility_map = get_visibility_map(self.gym.params.camera_half_length, shadowing_map=map_.shadowing())
+            while not is_solvable(map_.landing_distances(), map_.obst,
+                                  visibility_map, self.gym.max_budget):
+                distances = map_.landing_distances()
+                candidates = (distances <= self.gym.max_budget - 2) & free
+                candidates = np.array(np.nonzero(candidates))
+                i = np.random.choice(range(candidates.shape[1]))
+                landing_cell = candidates[:, i]
+                map_.map_data[landing_cell[0], landing_cell[1], 2] = True
+                map_.model.pop("landing")  # force recompute of landing
+
+            self.gym.state.map[:size, :size, :3] = map_.map_data[..., [2, 0, 1]]
+
+            return True
+
+        free_filled = filled & ~np.any(m, axis=-1)
+        low_filled = filled & m[..., 2] & ~m[..., 1]
+
+        adj_free_filled = convolve(free_filled, kernel, mode='constant', cval=0)
+        adj_low_filled = convolve(low_filled, kernel, mode='constant', cval=0)
+        adj_filled = convolve(filled, kernel, mode='constant', cval=0)
+
+        prob = (~filled).astype(int) * (
+                adj_filled.astype(int) + 2.5 * adj_free_filled.astype(int))
+        prob_norm = prob / np.sum(prob)
+
+        prob_flat = np.reshape(prob_norm, (-1,))
+        idx = np.random.choice(range(len(prob_flat)), p=prob_flat)
+        x, y = np.unravel_index(idx, shape=prob_norm.shape)
+
+        if adj_low_filled[x, y]:
+            p = (0.3, 0, 0.5, 0.2)
+        elif adj_free_filled[x, y]:
+            p = (0.75, 0.1, 0.05, 0.1)
+        else:
+            p = (0, 0, 0, 1.0)
+
+        v_idx = np.random.choice(range(len(values)), p=p)
+        filled[x, y] = True
+        m[x, y] = values[v_idx]
+        self.gym.state.map[:size, :size, :3] = m
+        self.gym.state.init.target[:size, :size] = ~filled
+
+        return False
+
     def start_editor(self):
         running = True
         old_map_size = copy.deepcopy(self.gym.map_image().original_shape)
@@ -590,7 +761,7 @@ class InteractiveEvaluator(Evaluator):
         pix = np.array((self.render_params.env_pixels, self.render_params.env_pixels))
         mouse_pressed = False
         shift_held = False
-        channel = 3
+        channels = [False] * self.gym.state.map.shape[2]
 
         old_env = self.gym.state.map[..., :3].copy()
 
@@ -609,7 +780,7 @@ class InteractiveEvaluator(Evaluator):
                                 if self.gym.add_map(filename) != -1:
                                     running = False
                                     self.gym.map_image().original_shape = old_map_size
-                                    self.gym.state.init.target = self.gym.state.map[:map_size[0], :map_size[1], 3]
+                                    self.gym.state.init.target = self.gym.state.map[:, :, 3]
                                     self.gym.state.init.map_name = map_name
                                     self.gym.reset(init=self.gym.state.init)
                                 else:
@@ -630,10 +801,11 @@ class InteractiveEvaluator(Evaluator):
                         old_map_size = (size, size)
                         self.gym.state.map[:size, :size, :] = False
                         map_size = np.array(self.gym.map_image().original_shape)
+                        self.gym.state.init.target[:, :] = False
                     elif pygame.K_0 <= event.key <= pygame.K_9:
                         number = event.key - pygame.K_0  # Calculate the pressed number
                         if 0 <= number < self.gym.state.map.shape[2]:
-                            channel = number
+                            channels[number] = not channels[number]
                     elif event.key == pygame.K_LSHIFT or event.key == pygame.K_RSHIFT:
                         shift_held = True
                 if event.type == pygame.KEYUP:
@@ -648,14 +820,7 @@ class InteractiveEvaluator(Evaluator):
                 mouse = np.array(pygame.mouse.get_pos())
                 cell = np.floor(mouse / pix * map_size).astype(int)
                 if 0 <= cell[0] < map_size[0] and 0 <= cell[1] < map_size[1]:
-                    if shift_held:
-                        self.gym.state.map[cell[0], cell[1], channel] = False
-                    else:
-                        cell_val = self.gym.state.map[cell[0], cell[1]]
-                        if not (channel == 3 and cell_val[2] or channel == 2 and cell_val[
-                            3] or channel == 0 and (cell_val[1] or cell_val[2]) or channel == 1 and
-                                cell_val[0] or channel == 2 and cell_val[0]):
-                            self.gym.state.map[cell[0], cell[1], channel] = True
+                    self.gym.state.map[cell[0], cell[1], channels] = not shift_held
 
             self.gym.last_map_id = -1
             self.gym.render(params=self.render_params)

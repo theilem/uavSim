@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 from skimage.draw import random_shapes
 from src.gym.grid import GridGym, GridRewardParams, GridRenderParams, GridStateRenderParams
-from src.gym.utils import get_visibility_map, draw_text, draw_shape_matrix
+from src.gym.utils import get_visibility_map, draw_text, draw_shape_matrix, is_solvable
 from seaborn import color_palette
 
 
@@ -14,33 +14,33 @@ class RandomTargetGenerator:
         coverage_range: (float, float) = (0.2, 0.5)
         shape_range: (int, int) = (3, 8)
 
-    def __init__(self, params: Params, shape):
+    def __init__(self, params: Params):
         self.params = params
-        self.shape = shape
 
     def generate_target(self, obstacles):
 
-        area = np.product(self.shape)
+        area = np.product(obstacles.shape)
 
         target = self.__generate_random_shapes_area(
             self.params.shape_range[0],
             self.params.shape_range[1],
             area * self.params.coverage_range[0],
-            area * self.params.coverage_range[1]
+            area * self.params.coverage_range[1],
+            obstacles.shape
         )
 
         return target & ~obstacles
 
-    def __generate_random_shapes(self, min_shapes, max_shapes):
-        img, _ = random_shapes(self.shape, max_shapes, min_shapes=min_shapes, channel_axis=None,
+    def __generate_random_shapes(self, min_shapes, max_shapes, shape):
+        img, _ = random_shapes(shape, max_shapes, min_shapes=min_shapes, channel_axis=None,
                                allow_overlap=True, rng=np.random.randint(2 ** 32 - 1))
         # Numpy random usage for random seed unifies random seed which can be set for repeatability
         attempt = np.array(img != 255, dtype=bool)
         return attempt, np.sum(attempt)
 
-    def __generate_random_shapes_area(self, min_shapes, max_shapes, min_area, max_area, retry=100):
+    def __generate_random_shapes_area(self, min_shapes, max_shapes, min_area, max_area, shape, retry=100):
         for attemptno in range(retry):
-            attempt, area = self.__generate_random_shapes(min_shapes, max_shapes)
+            attempt, area = self.__generate_random_shapes(min_shapes, max_shapes, shape)
             if min_area is not None and min_area > area:
                 continue
             if max_area is not None and max_area < area:
@@ -48,20 +48,20 @@ class RandomTargetGenerator:
             return attempt
         print("Was not able to generate shapes with given area constraint in allowed number of tries."
               " Randomly returning next attempt.")
-        attempt, area = self.__generate_random_shapes(min_shapes, max_shapes)
+        attempt, area = self.__generate_random_shapes(min_shapes, max_shapes, shape)
         print("Size is: ", area)
         return attempt
 
-    def __generate_exclusive_shapes(self, exclusion, min_shapes, max_shapes):
-        attempt, area = self.__generate_random_shapes(min_shapes, max_shapes)
+    def __generate_exclusive_shapes(self, exclusion, min_shapes, max_shapes, shape):
+        attempt, area = self.__generate_random_shapes(min_shapes, max_shapes, shape)
         attempt = attempt & (~exclusion)
         area = np.sum(attempt)
         return attempt, area
 
     # Create target image and then subtract exclusion area
-    def __generate_exclusive_shapes_area(self, exclusion, min_shapes, max_shapes, min_area, max_area, retry=100):
+    def __generate_exclusive_shapes_area(self, exclusion, min_shapes, max_shapes, min_area, max_area, shape, retry=100):
         for attemptno in range(retry):
-            attempt, area = self.__generate_exclusive_shapes(exclusion, min_shapes, max_shapes)
+            attempt, area = self.__generate_exclusive_shapes(exclusion, min_shapes, max_shapes, shape)
             if min_area is not None and min_area > area:
                 continue
             if max_area is not None and max_area < area:
@@ -70,7 +70,7 @@ class RandomTargetGenerator:
 
         print("Was not able to generate shapes with given area constraint in allowed number of tries."
               " Randomly returning next attempt.")
-        attempt, area = self.__generate_exclusive_shapes(exclusion, min_shapes, max_shapes)
+        attempt, area = self.__generate_exclusive_shapes(exclusion, min_shapes, max_shapes, shape)
         print("Size is: ", area)
         return attempt
 
@@ -121,24 +121,24 @@ class CPPGym(GridGym):
 
     @dataclass
     class State(GridGym.State):
-        cells_remaining: int = 0
+        coverage = None
+        cells_remaining = 0
         decomp = []
         decomp_init = None
 
     def __init__(self, params: Params = Params()):
         super().__init__(params)
+        self.generator = RandomTargetGenerator(params.target_generator)
 
         self.params = params
         self._camera = []
         for map_image in self._map_image:
-            self._camera.append(SimpleSquareCamera(params.camera_half_length, map_image.shadowing_map))
+            self._camera.append(SimpleSquareCamera(params.camera_half_length, map_image.shadowing()))
 
         for k, (m, c) in enumerate(zip(self._map_image, self._camera)):
-            if not self.is_solvable(m, c):
+            if not is_solvable(m.landing_distances(), m.obst, c.visibility_map, self.max_budget):
                 print(f"{self.map_names[k]} is not solvable.")
                 exit(1)
-
-        self.generator = RandomTargetGenerator(params.target_generator, self.map_image(self.state).get_size())
 
         self.layer_order = ["environment", "decomp", "trajectory", "view", "agent", "decomp_labels"]
 
@@ -151,17 +151,19 @@ class CPPGym(GridGym):
 
     def initialize_map(self, state, map_index=None):
         self._initialize_map(state, map_index)
-        target_and_covered = np.zeros(state.environment.shape[:2] + (2,), dtype=bool)
-        state.map = np.concatenate((state.environment, target_and_covered), axis=-1)
+        target = np.zeros(state.map.shape[:2] + (1,), dtype=bool)
+        state.map = np.concatenate((state.map, target), axis=-1)
+        state.coverage = np.zeros(state.map.shape[:2], dtype=bool)
 
     def add_map(self, filename):
         index = super().add_map(filename)
-        camera = SimpleSquareCamera(self.params.camera_half_length, self._map_image[index].shadowing_map)
+        camera = SimpleSquareCamera(self.params.camera_half_length, self._map_image[index].shadowing())
         if index == len(self._camera):
             self._camera.append(camera)
         else:
             self._camera.insert(index, camera)
-        if self.is_solvable(self._map_image[index], self._camera[index]):
+        if is_solvable(self._map_image[index].landing_distances(), self._map_image[index].obst,
+                       self._camera[index].visibility_map, self.params.budget_range[1]):
             return index
         return -1
 
@@ -173,9 +175,8 @@ class CPPGym(GridGym):
             init = self.generate_init(map_name)
         state.init = init
         self.initialize_map(state, self.get_map_index(init.map_name))
-        state.map[..., -2] = init.target
-        state.map[..., -1] = False
-        state.decomp_init = np.logical_and(state.map[..., 3], state.map[..., 4])
+        state.map[..., -1] = init.target
+        state.decomp_init = state.map[..., 3].copy()
         state.decomp = []
         self.reset_state(state, init)
         state.cells_remaining = self.get_remaining_cells(state)
@@ -191,43 +192,15 @@ class CPPGym(GridGym):
         map_index = self.get_map_index(init.map_name)
         shape = self._map_image[map_index].original_shape
         self.generator.shape = shape
-        cropped_target = self.generator.generate_target(self._map_image[map_index].obstacles[:shape[0], :shape[1]])
+        cropped_target = self.generator.generate_target(self._map_image[map_index].obst)
         target = np.zeros(self.shape)
         target[:shape[0], :shape[1]] = cropped_target
         return CPPGym.Init(position=init.position, budget=init.budget, map_name=init.map_name, target=target)
 
-    def get_observed_maps(self, state):
-        centered_map = state.centered_map.copy()
-        centered_map[..., 3] &= np.logical_not(centered_map[..., 4])
-        maps = [centered_map[..., :-1]]
-        if self.params.position_history:
-            maps.append(state.position_history)
-        if self.params.random_layer:
-            maps.append(np.random.uniform(size=(*state.centered_map.shape[:2], 1)))
-        observed_maps = np.concatenate(maps, axis=-1)
-        return np.expand_dims(observed_maps, 0)
-
-    def get_obs(self, state):
-        observed_maps = self.get_observed_maps(state)
-        obs = {
-            "environment": np.expand_dims(state.environment, 0),
-            "map": observed_maps,
-            "budget": np.reshape(state.budget, (1, 1)),
-            "landed": np.reshape(state.landed, (1, 1)),
-            "mask": np.expand_dims(self.get_action_masks(state), 0)
-        }
-        return obs
-
     def step(self, action, state=None):
         if state is None:
             state = self.state
-        self.motion_step(state, action)
-
-        self.vision_step(state)
-
-        rewards = self.get_rewards(state)
-
-        state.episodic_reward += rewards
+        rewards = self._step(state, action)
 
         obs = self.get_obs(state)
 
@@ -235,19 +208,28 @@ class CPPGym(GridGym):
 
         return obs, rewards, state.terminated, state.truncated, self.get_info(state)
 
+    def _step(self, state, action):
+        if isinstance(action, np.ndarray):
+            action = action[0]
+        self.motion_step(state, action)
+        self.vision_step(state)
+        rewards = self.get_rewards(state)
+        state.episodic_reward += rewards
+        state.truncated = state.steps >= self.timeout_steps(state)
+        return rewards
+
     def vision_step(self, state):
         if not state.crashed and not state.landed:
             view = self.camera(state).compute_view(state.position)
             x, y = view.shape
-            state.map[:x, :y, 4] |= view
-        state.centered_map[..., 4] = self.pad_layer(state.map[..., 4], state.position)
+            state.map[:x, :y, 3] &= ~view
+            state.coverage[:x, :y] |= view
 
         if state.landed:
-            covered = np.logical_and(state.map[..., 3], state.map[..., 4])
-            decomp = np.logical_and(covered, np.logical_not(state.decomp_init))
+            decomp = state.decomp_init & ~state.map[..., 3]
             if np.any(decomp):
                 state.decomp.append(decomp)
-                state.decomp_init = covered
+                state.decomp_init = state.map[..., 3].copy()
 
     def get_rewards(self, state):
         rewards = super().get_rewards(state)
@@ -261,7 +243,7 @@ class CPPGym(GridGym):
 
     @staticmethod
     def get_remaining_cells(state):
-        return np.sum(np.logical_and(state.map[..., 3], np.logical_not(state.map[..., 4])))
+        return np.sum(state.map[..., 3])
 
     def objective_complete(self, state):
         return self.get_remaining_cells(state) == 0
@@ -288,12 +270,14 @@ class CPPGym(GridGym):
         for x in range(shape[0]):
             for y in range(shape[1]):
                 cell = state.map[x, y]
+                covered = state.coverage[x, y]
+                init_target = state.init.target[x, y]
                 pos = np.array((x, y))
                 pos_image = pos * pix_size
-                dim_factor = 1.0 if cell[4] else 0.6
+                dim_factor = 1.0 if covered else 0.6
                 patch = pygame.Rect(pos_image, (pix_size + 1, pix_size + 1))
-                if cell[1] or cell[3] or cell[0]:
-                    color = (230 * cell[1], 230 * cell[3], 230 * cell[0])
+                if cell[1] or init_target or cell[0]:
+                    color = (230 * cell[1], 230 * init_target, 230 * cell[0])
                     pygame.draw.rect(canvas, np.array(color) * dim_factor, patch)
                 else:
                     pygame.draw.rect(canvas, np.array((255, 255, 255)) * dim_factor, patch)
@@ -346,7 +330,8 @@ class CPPGym(GridGym):
         if state is None:
             state = self.state
         info = super().get_info(state)
-        collection_ratio = 1 - self.get_remaining_cells(state) / np.sum(state.map[..., 3])
+        target_sum = np.sum(state.init.target)
+        collection_ratio = (1 - self.get_remaining_cells(state) / target_sum) if target_sum > 0 else 1.0
         info.update({
             "collection_ratio": collection_ratio,
             "task_solved": self.task_solved(state) and state.landed
@@ -358,33 +343,3 @@ class CPPGym(GridGym):
 
     def camera(self, state):
         return self._camera[state.map_index]
-
-    def is_solvable(self, map_image, camera):
-        print("test")
-        max_steps = self.params.budget_range[1] // 2 - 1
-
-        n, m = map_image.original_shape
-
-        dm = map_image.distance_map
-        slz = map_image.start_land_zone[:n, :m]
-        vm = camera.visibility_map
-        obs = map_image.obstacles[:n, :m]
-
-        sp = np.transpose(np.nonzero(slz))  # [S, 2]
-        dm = np.where(dm < 0, max_steps + 1, dm)
-
-        reach = np.zeros_like(slz)
-        for x, y in sp:
-            r = dm[x, y] <= max_steps
-            reach = np.logical_or(reach, r)
-
-        non_reach = np.logical_not(np.logical_or(reach, obs))
-        if not np.any(non_reach):
-            return True
-
-        nr = np.transpose(np.nonzero(non_reach))
-        for x, y in nr:
-            if not np.any(np.logical_and(reach, vm[x, y])):
-                return False
-
-        return True

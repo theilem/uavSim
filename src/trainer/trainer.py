@@ -27,6 +27,24 @@ class DiscountCurve:
         else:
             return self.base
 
+    def log_success(self):
+        pass
+
+
+class DiscountSuccessSchedule:
+    def __init__(self, base, rate, steps):
+        self.decay = ExponentialDecay(1 - base, decay_rate=rate, decay_steps=steps)
+
+        self.successes = tf.Variable(0, dtype=tf.int64)
+
+    @tf.function
+    def log_success(self):
+        self.successes.assign_add(1)
+
+    @tf.function
+    def __call__(self, step):
+        return 1.0 - self.decay(self.successes)
+
 
 class BaseTrainer:
     @dataclass
@@ -34,13 +52,12 @@ class BaseTrainer:
         training_steps: int = 2_000_000
         gamma: DecayParams = DecayParams(0.96, 0.5, 1_000_000)
 
-    def __init__(self, gym: GridGym, observation_function, action_space):
+    def __init__(self, gym: GridGym):
         self.gym = gym
-        self.observation_function = observation_function
-
+        action_space = gym.action_space
         assert isinstance(action_space, spaces.Discrete)
         self.action_space: spaces.Discrete = action_space
-        self.observation_space = observation_function.get_observation_space(gym.observation_space.sample())
+        self.observation_space = gym.observation_space
 
     def get_action(self, obs, greedy=False) -> Tuple[int, float]:
         raise NotImplementedError()

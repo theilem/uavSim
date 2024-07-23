@@ -16,6 +16,8 @@ class ACAgent(Agent):
         self.actor = ModelFactory.create(params.model, obs_space=obs_space, act_space=act_space)
         self.critic = ModelFactory.create(params.model, obs_space=obs_space, act_space=None)
 
+        self.expert_inference = False
+
     def save_network(self, path, name="model"):
         self.actor.model.save(f"{path}/actor_{name}")
         self.critic.model.save(f"{path}/critic_{name}")
@@ -40,11 +42,18 @@ class ACAgent(Agent):
         self.actor.model = tf.keras.models.load_model(f"{path}/actor.keras")
         self.critic.model = tf.keras.models.load_model(f"{path}/critic.keras")
 
+    # @tf.function
+    def actor_inference(self, obs):
+        return self.actor.predict_expert(obs) if self.expert_inference else self.actor(obs)
+
+    @tf.function
+    def critic_inference(self, obs):
+        return self.critic.predict_expert(obs)[..., None] if self.expert_inference else self.critic(obs)
 
     @tf.function
     def get_probs_and_value(self, obs):
-        probs = self.actor(obs)
-        value = self.critic(obs)
+        probs = self.actor_inference(obs)
+        value = self.critic_inference(obs)
 
         return probs, value
 
@@ -56,12 +65,12 @@ class ACAgent(Agent):
 
     @tf.function
     def get_value(self, obs):
-        value = self.critic(obs)
+        value = self.critic_inference(obs)
         return tf.squeeze(value, axis=-1)
 
-    @tf.function
+    # @tf.function
     def get_exploration_action(self, obs, step=None):
-        probs = self.actor(obs)
+        probs = self.actor_inference(obs)
         actions = tf.random.categorical(tf.math.log(probs), 1)
         p = tf.gather_nd(probs, actions, batch_dims=1)
         actions = tf.squeeze(actions, axis=-1)
@@ -69,7 +78,7 @@ class ACAgent(Agent):
 
     @tf.function
     def get_exploitation_action(self, obs):
-        probs = self.actor(obs)
+        probs = self.actor_inference(obs)
         action = tf.argmax(probs, axis=-1)
         return action, tf.ones_like(action)
 

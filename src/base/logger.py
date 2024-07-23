@@ -1,8 +1,8 @@
 import os
 from collections import deque
 from dataclasses import dataclass
+from typing import Tuple, List, Optional
 
-import numpy as np
 import tensorflow as tf
 
 from utils import dict_mean
@@ -15,8 +15,10 @@ class Logger:
         evaluation_period: int = 10_000
         evaluation_start: int = 25_000
         evaluation_episodes: int = 1
-        save_period: int = 10_000
+        save_weights: int = 100_000
+        save_keras: int = 1_000_000
         log_episodes: bool = True
+        save_specific: Optional[List[int]] = None
 
     def __init__(self, params: Params, log_dir, agent):
         self.params = params
@@ -37,13 +39,18 @@ class Logger:
 
     def log_train(self, train_log):
         self.train_steps += 1
-        self.train_logs.append(train_log)
 
-        if self.train_steps % self.params.loss_period == 0:
+        if self.params.loss_period == 1:
+            logs = train_log
+        else:
+            self.train_logs.append(train_log)
+            if self.train_steps % self.params.loss_period != 0:
+                return
             logs = dict_mean(self.train_logs)
-            with self.log_writer.as_default():
-                for name, value in logs.items():
-                    self.log_scalar(f'training/{name}', value, self.train_steps)
+            
+        with self.log_writer.as_default():
+            for name, value in logs.items():
+                self.log_scalar(f'training/{name}', value, self.train_steps)
 
     def log_step(self, step_info, action_prob=None):
         self.steps += 1
@@ -61,8 +68,16 @@ class Logger:
                     for name, value in info.items():
                         self.log_scalar(f'evaluation/{name}', value, self.steps)
 
-        if self.steps % self.params.save_period == 0:
+        if self.params.save_specific is not None:
+            for step in self.params.save_specific:
+                if self.steps % step == 0:
+                    self.agent.save_weights(f"{self.log_dir}/models/", name=f"weights_at_{step}")
+
+
+        if self.steps % self.params.save_weights == 0:
             self.agent.save_weights(f"{self.log_dir}/models/")
+        if self.steps % self.params.save_keras == 0:
+            self.agent.save_keras(f"{self.log_dir}/models/")
 
     def log_episode(self, info):
         if not self.params.log_episodes:

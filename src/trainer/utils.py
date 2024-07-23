@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from typing import TypeVar
 
 import numpy as np
+import tensorflow as tf
 
 
 def shape(exp):
@@ -20,6 +21,21 @@ def type_of(exp):
 
 def dict_slice(d, idx):
     return {key: value[None, idx] for key, value in d.items()}
+
+
+@tf.function
+def dict_slices_tf(d, idx):
+    return {key: value[idx] for key, value in d.items()}
+
+
+def dict_slice_set(d, idx, assign):
+    for key, value in d.items():
+        value[idx] = assign[key]
+    return d
+
+
+def dict_to_tensor(d):
+    return {key: tf.convert_to_tensor(value) for key, value in d.items()}
 
 
 def toggle(value, a=True, b=False):

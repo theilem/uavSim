@@ -1,0 +1,163 @@
+{
+    "trainer": {
+        "type": "ppo",
+        "params": {
+            "training_steps": 100000000,
+            "gamma": {
+                "base": 0.95,
+                "decay_rate": 0.1,
+                "decay_steps": 5000
+            },
+            "rollout_length": 40000,
+            "rollout_gyms": 20,
+            "lam": 0.8,
+            "epsilon": 0.2,
+            "beta": 0.01,
+            "normalize_advantage": true,
+            "batch_size": 128,
+            "rollout_epochs": 4,
+            "actor_lr": {
+                "base": 3e-05,
+                "decay_rate": 0.1,
+                "decay_steps": 50000000
+            },
+            "critic_lr": {
+                "base": 0.0001,
+                "decay_rate": 0.1,
+                "decay_steps": 50000000
+            },
+            "use_success_discount": true,
+            "debug_observations": false,
+            "regularize": false,
+            "use_expert": false
+        }
+    },
+    "gym": {
+        "type": "cpp",
+        "params": {
+            "map_path": [
+                "res/manhattan32.png",
+                "res/manhattan_hard32.png",
+                "res/oberasbach32.png",
+                "res/suburban38.png",
+                "res/city40.png",
+                "res/open44.png",
+                "res/urban50.png",
+                "res/urban_hard50.png",
+                "res/castle50.png",
+                "res/tum50.png"
+            ],
+            "min_size": 50,
+            "add_rotated_maps": true,
+            "budget_range": [
+                50,
+                100
+            ],
+            "start_landed": true,
+            "safety_controller": false,
+            "timeout_steps": 1500,
+            "recharge": true,
+            "charge_amount": 2.0,
+            "rewards": {
+                "boundary_penalty": 0.0,
+                "empty_battery_penalty": 5.0,
+                "movement_penalty": 0.02,
+                "cell_reward": 0.01,
+                "completion_reward": 0.0
+            },
+            "rendering": {
+                "render": false,
+                "draw_stats": true,
+                "render_fps": 0,
+                "env_pixels": 800,
+                "addons": true,
+                "normal_state": {
+                    "draw_trajectory": true,
+                    "draw_decomp": true,
+                    "draw_view": false
+                },
+                "terminal_state": {
+                    "draw_trajectory": true,
+                    "draw_decomp": true,
+                    "draw_view": false
+                }
+            },
+            "action_masking": "invariant",
+            "position_history_alpha": 0.99,
+            "obs_function": {
+                "type": "plain",
+                "params": {
+                    "position_history": true,
+                    "random_layer": false,
+                    "padding_values": [
+                        0,
+                        1,
+                        1,
+                        0,
+                        0,
+                        0
+                    ],
+                    "pad_frame": false
+                }
+            },
+            "target_generator": {
+                "coverage_range": [
+                    0.2,
+                    0.5
+                ],
+                "shape_range": [
+                    3,
+                    8
+                ]
+            },
+            "camera_half_length": 2
+        }
+    },
+    "logger": {
+        "loss_period": 1,
+        "evaluation_period": 10000000,
+        "evaluation_start": 1000000000,
+        "evaluation_episodes": 10,
+        "save_weights": 1000000,
+        "save_keras": 10000000,
+        "log_episodes": false,
+        "save_specific": null
+    },
+    "evaluator": {
+        "stochastic": false,
+        "eval_maps": -1
+    },
+    "agent": {
+        "type": "ac",
+        "params": {
+            "model": {
+                "type": "equiv",
+                "params": {
+                    "conv_layers": 5,
+                    "conv_kernel_size": 3,
+                    "conv_kernels": 24,
+                    "hidden_layer_size": 256,
+                    "hidden_layer_num": 3,
+                    "use_pooling": true,
+                    "conversion": "reduce"
+                }
+            }
+        }
+    },
+    "observation": {
+        "type": "glob_loc",
+        "params": {
+            "position_history": true,
+            "random_layer": false,
+            "padding_values": [
+                0,
+                1,
+                1,
+                0,
+                0
+            ],
+            "global_map_scaling": 3,
+            "local_map_size": 17
+        }
+    }
+}

@@ -1,14 +1,19 @@
 from dataclasses import dataclass
+from typing import Tuple
 
 import numpy as np
-import tensorflow as tf
-from tensorflow.keras.layers import AvgPool2D
 from gymnasium import spaces
 
 from utils import Factory
 
+import skimage.measure
+
 
 class ObservationFunction:
+    @dataclass
+    class Params:
+        position_history: bool = True
+        random_layer: bool = False
 
     def __call__(self, state):
         return self.observe(state)
@@ -16,58 +21,158 @@ class ObservationFunction:
     def observe(self, state):
         raise NotImplementedError()
 
+    def observe_multi(self, states):
+        observes = [self.observe(state) for state in states]
+        obs = {key: np.concatenate([observe[key] for observe in observes], axis=0) for key in observes[0].keys()}
+        return obs
+
     def get_observation_space(self, state):
         raise NotImplementedError()
 
-    def to_experience(self, obs):
-        raise NotImplementedError()
 
-    def to_experience_batch(self, obs):
-        raise NotImplementedError()
-
-    def from_experience_batch(self, batch):
-        raise NotImplementedError()
-
-    def from_experience_batch_tf(self, batch):
-        raise NotImplementedError()
-
-    def experience_length(self):
-        raise NotImplementedError()
-
-
-class GlobLocObservation(ObservationFunction):
+class PlainMapObservation(ObservationFunction):
     @dataclass
-    class Params:
-        global_map_scaling: int = 3
-        local_map_size: int = 17
+    class Params(ObservationFunction.Params):
+        padding_values: Tuple[int] = (0, 1, 1, 0, 0, 0)
+        pad_frame: bool = False
+
+    def __init__(self, params: Params, max_budget):
+        self.params = params
+        self.max_budget = max_budget
+        self.padded_map = None
+
+    def observe(self, state):
+        map_layers = state.map
+        position_layer = np.zeros_like(state.map[..., 0])
+        position_layer[state.position[0], state.position[1]] = 1
+        map_layers = np.concatenate((map_layers, np.expand_dims(position_layer, -1)), axis=-1)
+        if self.params.position_history:
+            map_layers = np.concatenate((map_layers, np.expand_dims(state.position_history, -1)), axis=-1)
+        if self.params.pad_frame:
+            if self.padded_map is None:
+                m = map_layers.shape[0] + 2
+                self.padded_map = np.repeat(
+                    np.repeat(np.reshape(self.params.padding_values, (1, 1, -1)), repeats=m, axis=0), repeats=m,
+                    axis=1).astype(float)
+            pm = self.padded_map.copy()
+            pm[1:-1, 1:-1] = map_layers
+            map_layers = pm
+
+        map_layers = np.expand_dims(map_layers, axis=0)
+        scalars = np.expand_dims(
+            np.stack((state.budget / self.max_budget, state.landed), axis=-1), axis=0)
+        mask = np.expand_dims(state.action_mask, axis=0)
+
+        obs = {"map": map_layers, "scalars": scalars, "mask": mask}
+        return obs
+
+    def get_observation_space(self, state):
+        obs = self.observe(state)
+        return spaces.Dict(
+            {
+                "map": spaces.Box(low=0, high=1, shape=obs["map"].shape, dtype=float),
+                "scalars": spaces.Box(low=0, high=1, shape=obs["scalars"].shape, dtype=float),
+                "mask": spaces.Box(low=0, high=1, shape=obs["mask"].shape, dtype=bool)
+            }
+        )
+
+
+class CenteredMapObservation(ObservationFunction):
+    @dataclass
+    class Params(ObservationFunction.Params):
+        padding_values: Tuple[int] = (0, 1, 1, 0, 0)
 
     def __init__(self, params: Params, max_budget):
         self.params = params
         self.max_budget = max_budget
 
+        self.centered_map = None
+
+    def pad_centered(self, map_layers, position):
+
+        x, y = np.array(map_layers.shape[:2]) - position - 1
+        m = map_layers.shape[0]
+
+        if self.centered_map is None:
+            m_c = m * 2 - 1
+            self.centered_map = np.repeat(
+                np.repeat(np.reshape(self.params.padding_values, (1, 1, -1)), repeats=m_c, axis=0), repeats=m_c,
+                axis=1).astype(float)
+
+        centered_map = self.centered_map.copy()
+        centered_map[x:x + m, y:y + m] = map_layers
+
+        return centered_map
+
     def observe(self, state):
-        map_layers = tf.convert_to_tensor(state["map"])
-        budget = tf.reshape(tf.convert_to_tensor(state["budget"], dtype=tf.float32), (-1, 1))
-        landed = tf.reshape(state["landed"], (-1, 1))
-        mask = tf.convert_to_tensor(state["mask"])
-        heuristic_action = tf.convert_to_tensor(state["heuristic_action"]) if "heuristic_action" in state else None
+        map_layers = state.map
+        if self.params.position_history:
+            map_layers = np.concatenate((map_layers, np.expand_dims(state.position_history, -1)), axis=-1)
 
-        global_map, local_map, scalars, mask = self._prepare_observations_tf(map_layers, budget, landed, mask,
-                                                                             heuristic_action)
-        return {"global_map": global_map, "local_map": local_map, "scalars": scalars, "mask": mask}
+        centered_map = np.expand_dims(self.pad_centered(map_layers, state.position), axis=0)
+        scalars = np.expand_dims(
+            np.stack((state.budget / self.max_budget, state.landed), axis=-1), axis=0)
+        mask = np.expand_dims(state.action_mask, axis=0)
 
-    @tf.function
-    def _prepare_observations_tf(self, map_layers, budget, landed, mask, heuristic_action):
-        map_layers = tf.cast(map_layers, dtype=tf.float32)
-        global_map = AvgPool2D((self.params.global_map_scaling, self.params.global_map_scaling))(map_layers)
+        return {"map": centered_map, "scalars": scalars, "mask": mask}
 
-        crop_frac = float(self.params.local_map_size) / float(map_layers.shape[1])
-        local_map = tf.image.central_crop(map_layers, crop_frac)
+    def observe_multi(self, states):
+        map_layers = [state.map for state in states]
 
-        max_budget = self.max_budget
-        scalars = tf.concat((budget / max_budget, tf.cast(landed, tf.float32)), axis=-1)
+        if self.params.position_history:
+            position_histories = [state.position_history for state in states]
+            map_layers = [np.concatenate((maps, np.expand_dims(position_history, -1)), axis=-1) for
+                          maps, position_history in zip(map_layers, position_histories)]
 
-        return global_map, local_map, scalars, mask
+        centered_map = np.stack([self.pad_centered(maps, state.position) for maps, state in zip(map_layers, states)], 0)
+        scalars = np.stack([np.stack((state.budget / self.max_budget, state.landed), axis=-1) for state in states],
+                           axis=0)
+        mask = np.stack([state.action_mask for state in states], axis=0)
+        return {"map": centered_map, "scalars": scalars, "mask": mask}
+
+    def get_observation_space(self, state):
+        obs = self.observe(state)
+        return spaces.Dict(
+            {
+                "map": spaces.Box(low=0, high=1, shape=obs["map"].shape, dtype=float),
+                "scalars": spaces.Box(low=0, high=1, shape=obs["scalars"].shape, dtype=float),
+                "mask": spaces.Box(low=0, high=1, shape=obs["mask"].shape, dtype=bool)
+            }
+        )
+
+
+class GlobLocObservation(CenteredMapObservation):
+    @dataclass
+    class Params(CenteredMapObservation.Params):
+        global_map_scaling: int = 3
+        local_map_size: int = 17
+
+    def __init__(self, params: Params, max_budget):
+        super().__init__(params, max_budget)
+        self.params = params
+
+    def observe(self, state):
+        obs = super().observe(state)
+        obs = self._observe(obs)
+
+        return obs
+
+    def _observe(self, obs):
+        centered = obs.pop("map")
+        g = self.params.global_map_scaling
+        l = self.params.local_map_size
+        global_map = skimage.measure.block_reduce(centered, (1, g, g, 1), np.mean)
+        x, y = centered.shape[1:3]
+        local_map = centered[:, x // 2 - l // 2: x // 2 + l // 2 + 1, x // 2 - l // 2: x // 2 + l // 2 + 1, :]
+        obs.update({"global_map": global_map, "local_map": local_map})
+
+        return obs
+
+    def observe_multi(self, states):
+        obs = super().observe_multi(states)
+        obs = self._observe(obs)
+
+        return obs
 
     def get_observation_space(self, state):
         obs = self.observe(state)
@@ -80,109 +185,6 @@ class GlobLocObservation(ObservationFunction):
             }
         )
 
-    def to_experience(self, obs):
-        return [
-            obs["global_map"].numpy()[0].astype(np.float32),
-            obs["local_map"].numpy()[0].astype(np.float32),
-            obs["scalars"].numpy()[0].astype(np.float32),
-            obs["mask"].numpy()[0].astype(bool)
-        ]
-
-    def to_experience_batch(self, obs):
-        return [
-            obs["global_map"].numpy().astype(np.float32),
-            obs["local_map"].numpy().astype(np.float32),
-            obs["scalars"].numpy().astype(np.float32),
-            obs["mask"].numpy().astype(bool)
-        ]
-
-    def from_experience_batch(self, batch):
-        return {
-            "global_map": tf.convert_to_tensor(batch[0]),
-            "local_map": tf.convert_to_tensor(batch[1].astype(np.float32)),
-            "scalars": tf.convert_to_tensor(batch[2]),
-            "mask": tf.convert_to_tensor(batch[3])
-        }
-
-    def from_experience_batch_tf(self, batch):
-        return {
-            "global_map": batch[0],
-            "local_map": tf.cast(batch[1], dtype=tf.float32),
-            "scalars": batch[2],
-            "mask": batch[3]
-        }
-
-    def experience_length(self):
-        return 4
-
-
-class CenteredMapObservation(ObservationFunction):
-    @dataclass
-    class Params:
-        observe_mask: bool = False
-        observe_heuristic: bool = False
-        bool_map: bool = True
-
-    def __init__(self, params: Params, max_budget):
-        self.params = params
-        self.max_budget = max_budget
-
-    def observe(self, obs):
-        map_layers = tf.convert_to_tensor(obs["map"])
-        budget = tf.reshape(tf.convert_to_tensor(obs["budget"], dtype=tf.float32), (-1, 1))
-        landed = tf.reshape(obs["landed"], (-1, 1))
-        mask = tf.convert_to_tensor(obs["mask"])
-        heuristic_action = tf.convert_to_tensor(obs["heuristic_action"]) if "heuristic_action" in obs else None
-
-        centered_map, scalars = self._prepare_observations_tf(map_layers, budget, landed, mask, heuristic_action)
-        return {"centered_map": centered_map, "scalars": scalars, "mask": mask}
-
-    @tf.function
-    def _prepare_observations_tf(self, map_layers, budget, landed, mask, heuristic_action):
-        centered_map = tf.cast(map_layers, dtype=tf.float32)
-        max_budget = self.max_budget
-        scalars = tf.concat((budget / max_budget, tf.cast(landed, tf.float32)), axis=-1)
-
-        if self.params.observe_mask:
-            scalars = tf.concat((scalars, tf.cast(mask, tf.float32)), axis=-1)
-
-        if self.params.observe_heuristic and heuristic_action is not None:
-            heuristic_hot = tf.one_hot(heuristic_action, depth=mask.shape[-1] - 1,
-                                       dtype=tf.float32, axis=-1)
-            scalars = tf.concat((scalars, heuristic_hot), axis=-1)
-
-        return centered_map, scalars
-
-    def get_observation_space(self, state):
-        obs = self.observe(state)
-        return spaces.Dict(
-            {
-                "centered_map": spaces.Box(low=0, high=1, shape=obs["centered_map"].shape, dtype=float),
-                "scalars": spaces.Box(low=0, high=1, shape=obs["scalars"].shape, dtype=float),
-                "mask": spaces.Box(low=0, high=1, shape=obs["mask"].shape, dtype=bool)
-            }
-        )
-
-    def to_experience(self, obs):
-        return [
-            obs["centered_map"].numpy()[0].astype(bool if self.params.bool_map else np.float32),
-            obs["scalars"].numpy()[0].astype(np.float32),
-            obs["mask"].numpy()[0].astype(bool)
-        ]
-
-    def from_experience_batch(self, batch):
-        return {
-            "centered_map": tf.cast(tf.convert_to_tensor(batch[0]), tf.float32),
-            "scalars": tf.cast(tf.convert_to_tensor(batch[1]), tf.float32),
-            "mask": tf.convert_to_tensor(batch[2])
-        }
-
-    def experience_length(self):
-        return 3
-
-    def minimum_map_size(self, min_sizes):
-        return min_sizes
-
 
 class ObservationFunctionFactory(Factory):
     @classmethod
@@ -190,6 +192,7 @@ class ObservationFunctionFactory(Factory):
         return {
             "glob_loc": GlobLocObservation,
             "centered": CenteredMapObservation,
+            "plain": PlainMapObservation
         }
 
     @classmethod

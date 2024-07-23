@@ -24,7 +24,7 @@ long-horizon problem, and position history observations to avoid state loops.
 The agents are stored in a submodule and can be pulled by
 ```commandline
 git submodule init
-git submodule pull
+git submodule update
 ```
 
 For questions, please contact Mirco Theile via email mirco.theile@tum.de.

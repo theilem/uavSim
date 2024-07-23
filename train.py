@@ -30,23 +30,27 @@ if __name__ == "__main__":
 
     gym = PathPlanningGymFactory.create(params.gym)
 
-    observation_function = ObservationFunctionFactory.create(params.observation,
-                                                             max_budget=gym.params.budget_range[-1])
     action_space = gym.action_space
+    obs_space = gym.observation_space
 
-    obs_space = observation_function.get_observation_space(gym.observation_space.sample())
     agent = AgentFactory.create(params.agent, obs_space=obs_space, act_space=action_space)
 
     if args.verbose:
         agent.summary()
 
     logger = Logger(params.logger, log_dir, agent)
-    trainer = TrainerFactory.create(params.trainer, gym=gym, logger=logger, agent=agent,
-                                    observation_function=observation_function, action_space=action_space)
+    trainer = TrainerFactory.create(params.trainer, gym=gym, logger=logger, agent=agent)
     evaluator = Evaluator(params.evaluator, trainer, gym)
     logger.evaluator = evaluator
 
     params.save_to(params.log_dir + "config.json")
 
+    if not args.gpu and args.gpu_id is None:
+        print("Running on CPU")
+    else:
+        print(f"Running on GPU {args.gpu_id}" if args.gpu_id is not None else "Running on GPU")
+
     trainer.train()
     agent.save_keras(params.log_dir + 'models/')
+
+    gym.close()

@@ -1,5 +1,4 @@
 import argparse
-import copy
 import os
 import pickle
 
@@ -9,8 +8,7 @@ import pygame
 
 from src.gym import PathPlanningGymFactory
 from src.trainer.agent import AgentFactory
-from src.trainer.observation import ObservationFunctionFactory
-from src.base.evaluator import Evaluator, PyGameHuman, InteractiveEvaluator
+from src.base.evaluator import PyGameHuman, InteractiveEvaluator
 from src.trainer.trainer import TrainerFactory
 
 from train import PathPlanningParams
@@ -21,7 +19,6 @@ from utils import find_map, find_scenario, find_config_model, override_params
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('-a', nargs='*', default=None, help='Add maps')
-    parser.add_argument('-t', nargs='*', default=None, help='Add timeouts for maps, 1000 otherwise')
     parser.add_argument('-d', action='store_true', help='remove all other maps')
     parser.add_argument('-r', nargs='*', default=None, help='Record episode only, potentially override render params')
     parser.add_argument('-n', default=20, help='Parallel gyms for evaluate')
@@ -46,7 +43,6 @@ def main():
 
     if args.d:
         params.gym["params"]["map_path"] = []
-        params.gym["params"]["timeout_steps"] = []
 
     if args.all_maps:
         maps = [file.replace(".png", "") for file in os.listdir("res") if file.endswith(".png")]
@@ -55,18 +51,9 @@ def main():
             if map_path in params.gym["params"]["map_path"]:
                 continue
             params.gym["params"]["map_path"].append(map_path)
-            params.gym["params"]["timeout_steps"].append(1500)
     elif args.a is not None:
         for m in args.a:
             params.gym["params"]["map_path"].append(find_map(m))
-
-        if args.t is not None:
-            assert len(args.t) == len(args.a), "If adding timeouts, do it for all added maps"
-            for t in args.t:
-                params.gym["params"]["timeout_steps"].append(int(t))
-        else:
-            for _ in args.a:
-                params.gym["params"]["timeout_steps"].append(1000)
 
     init = None
     if args.scenario is not None:
@@ -76,9 +63,7 @@ def main():
     gym = PathPlanningGymFactory.create(params.gym)
 
     if not args.gym_only:
-        observation_function = ObservationFunctionFactory.create(params.observation,
-                                                                 max_budget=gym.params.budget_range[-1])
-        obs_space = observation_function.get_observation_space(gym.observation_space.sample())
+        obs_space = gym.observation_space
 
         action_space = gym.action_space
         agent = AgentFactory.create(params.agent, obs_space=obs_space, act_space=action_space)
@@ -86,8 +71,7 @@ def main():
         if args.verbose:
             agent.summary()
 
-        trainer = TrainerFactory.create(params.trainer, gym=gym, logger=None, agent=agent,
-                                        observation_function=observation_function, action_space=action_space)
+        trainer = TrainerFactory.create(params.trainer, gym=gym, logger=None, agent=agent)
         model_dir = log_dir + "/models"
         try:
             agent.load_keras(model_dir)
@@ -123,6 +107,21 @@ def main():
             scenarios = pickle.load(f)
 
         inits = [scenario["init"] for scenario in scenarios]
+        # Check that maps are available
+        available = True
+        missing = []
+        for init in inits:
+            if init.map_name not in gym.map_names:
+                if init.map_name in missing:
+                    continue
+                print(f"Missing map {init.map_name}")
+                available = False
+                missing.append(init.map_name)
+
+        if not available:
+            print("Cannot run. Add missing maps.")
+            exit(1)
+
         infos = evaluator.evaluate_episodes(inits, int(args.n))
 
         total_steps = np.array([info["total_steps"] for info in infos])
@@ -150,6 +149,7 @@ def main():
 
         if len(args.r) > 0:
             gym.params.rendering = override_params(gym.params.rendering, args.r)
+            evaluator.render_params = gym.params.rendering
 
         if args.heuristic:
             name = "heuristic"
@@ -162,6 +162,7 @@ def main():
         return
 
     evaluator.evaluate_interactive(init)
+    gym.close()
 
 
 if __name__ == "__main__":
