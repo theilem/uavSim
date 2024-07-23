@@ -76,11 +76,13 @@ def main():
         try:
             agent.load_keras(model_dir)
             print("Loaded Keras Model")
-        except OSError:
+        except OSError as e:
             print("Could not load Keras Model")
+            print(e)
             agent.load_network(model_dir)
             agent.load_weights(model_dir)
             print("Loaded network and weights")
+            agent.save_keras(model_dir)
     else:
         trainer = None
 

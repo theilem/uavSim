@@ -42,7 +42,7 @@ class ACAgent(Agent):
         self.actor.model = tf.keras.models.load_model(f"{path}/actor.keras")
         self.critic.model = tf.keras.models.load_model(f"{path}/critic.keras")
 
-    # @tf.function
+    @tf.function
     def actor_inference(self, obs):
         return self.actor.predict_expert(obs) if self.expert_inference else self.actor(obs)
 
@@ -68,7 +68,7 @@ class ACAgent(Agent):
         value = self.critic_inference(obs)
         return tf.squeeze(value, axis=-1)
 
-    # @tf.function
+    @tf.function
     def get_exploration_action(self, obs, step=None):
         probs = self.actor_inference(obs)
         actions = tf.random.categorical(tf.math.log(probs), 1)
