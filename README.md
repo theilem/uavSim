@@ -1,7 +1,8 @@
-## Old Version
+## Old Versions
 
 The previous repository to recreate the [ICAR](https://ieeexplore.ieee.org/abstract/document/9659413) results is found
-in the icar branch.
+in the icar branch. For the [Learning to Recharge](https://arxiv.org/abs/2309.03157) results, the old repository is
+found in the learning_to_recharge branch.
 
 ## Table of contents
 
@@ -14,17 +15,21 @@ in the icar branch.
 
 ## Introduction
 
-This repository contains the implementation of the [power-constrained coverage path planning (CPP) with recharge problem](https://arxiv.org/abs/2309.03157)
-and the proposed PPO-based deep reinforcement learning (DRL) solution. The DRL approach utilizes map-based observations,
+This repository contains the implementation of
+the [Equivariant Ensembles and Regularization for Reinforcement Learning in Map-based Path Planning](https://arxiv.org/abs/2403.12856)
+based on the [power-constrained coverage path planning (CPP) with recharge problem](https://arxiv.org/abs/2309.03157).
+This repository contains the implementation of the Equivariant Ensembles and Regularization implementation for the CPP
+problem. Additionally, it utilizes map-based observations,
 preprocessed as global and local maps, action masking to ensure safety, discount factor scheduling to optimize the
 long-horizon problem, and position history observations to avoid state loops.
 
 ![Screenshot of the evaluation](./screenshots/example.png)
 
 The agents are stored in a submodule and can be pulled by
+
 ```commandline
 git submodule init
-git submodule update
+git submodule update --remote
 ```
 
 For questions, please contact Mirco Theile via email mirco.theile@tum.de.
@@ -32,7 +37,7 @@ For questions, please contact Mirco Theile via email mirco.theile@tum.de.
 ## Requirements
 
 ```
-tensorflow~=2.11.0
+tensorflow~=2.11.1
 opencv-python==4.7.0.68
 scikit-image==0.21.0
 gymnasium==0.27.0
@@ -47,15 +52,16 @@ Developed and tested only on Linux and MacOS.
 
 ## How to use
 
-With this repository PPO agents can be trained to solve the power-constrained CPP problem with recharge. Additionally,
-newly trained and example agents can be evaluated with a visualization.
+With this repository PPO agents can be trained to solve the power-constrained CPP problem with recharge. The agents can
+make use of equivariant ensembles and regularization. Additionally, newly trained and example agents can be evaluated
+with a visualization.
 
 ### Training
 
 #### General usage:
 
 ```
-python train.py [-h] [--gpu] [--gpu_id GPU_ID] [--generate] [--verbose] [--params [PARAMS ...]] config
+python train.py [-h] [--gpu] [--gpu_id GPU_ID] [--id ID] [--generate] [--verbose] [--params [PARAMS ...]] config
 
 positional arguments:
   config                Path to config file
@@ -64,6 +70,7 @@ options:
   -h, --help            show this help message and exit
   --gpu                 Activates usage of GPU
   --gpu_id GPU_ID       Activates usage of GPU on specific GPU id
+  --id ID               Gives the log files a specific name, else config name
   --generate            Generate config file for parameter class
   --verbose             Prints the network summary at the start
   --params [PARAMS ...]
@@ -73,53 +80,20 @@ options:
 
 #### How to recreate all the agents used in the paper:
 
-Normal Agents:
-
-- Multi3 ```python train.py --gpu config/multi3.json```
-- Multi10 ```python train.py --gpu config/multi10.json```
-- Suburban ```python train.py --gpu config/suburban.json```
-- Castle ```python train.py --gpu config/castle.json```
-- TUM ```python train.py --gpu config/tum.json```
-- Cal ```python train.py --gpu config/cal.json```
-- Manhattan ```python train.py --gpu config/manhattan.json```
-
-Mask Ablation:
-
-- No
-  Mask ```python train.py --gpu config/multi3.json --params gym/action_masking none trainer/gamma/decay_rate 1.0 --id no_mask```
-- Valid Mask
-  ```python train.py --gpu config/multi3.json --params gym/action_masking valid trainer/gamma/decay_rate 1.0 --id valid```
-- Immediate Mask
-  ```python train.py --gpu config/multi3.json --params gym/action_masking immediate trainer/gamma/decay_rate 1.0 --id immediate```
-- Invariant Mask ```python train.py --gpu config/multi3.json --params trainer/gamma/decay_rate 1.0 --id invariant```
-
-Discount Scheduling Ablation:
-
-- $\gamma_0=0.99$, $\gamma_s=\infty$
-  ```python train.py --gpu config/multi3.json --params trainer/gamma/decay_rate 1.0 --id gamma_099```
-- $\gamma_0=0.999$, $\gamma_s=\infty$
-  ```python train.py --gpu config/multi3.json --params trainer/gamma/base 0.999 trainer/gamma/decay_rate 1.0 --id gamma_0999```
-- $\gamma_0=1.0$, $\gamma_s=\infty$
-  ```python train.py --gpu config/multi3.json --params trainer/gamma/base 1.0 trainer/gamma/decay_rate 1.0 --id gamma_1```
-- $\gamma_0=0.99$, $\gamma_s=8\times 10^7$
-  ```python train.py --gpu config/multi3.json --params trainer/gamma/decay_rate 2000 --id gamma_decay_2k```
-- $\gamma_0=0.99$, $\gamma_s=2\times 10^7$
-  ```python train.py --gpu config/multi3.json```
-
-Position History Ablation:
-
-- No Position History (
-  Base) ```python train.py --gpu config/multi3.json --params gym/position_history 0 --id no_history```
-- Random
-  Layer ```python train.py --gpu config/multi3.json --params gym/position_history 0 gym/random_layer 1 --id random_layer```
-- Position History ```python train.py --gpu config/multi3.json```
+- Baseline ```python train.py --gpu config/baseline.json```
+- Ensemble ```python train.py --gpu config/ens.json```
+- Regularization ```python train.py --gpu config/reg.json```
+- Ensemble + Regularization ```python train.py --gpu config/ens_reg.json```
+- Augmentation ```python train.py --gpu config/rot_aug.json```
 
 ### Evaluating
 
 #### General Usage
 
 ```
-python evaluate.py [-h] [-a [A ...]] [-t [T ...]] [-d] [-r [R ...]] [--scenario SCENARIO] [--all_maps] [--heuristic] [--maps_only] [--gpu] [--gpu_id GPU_ID] [--generate] [--verbose] [--params [PARAMS ...]] config
+python evaluate.py [-h] [-a [A ...]] [-d] [-r [R ...]] [-n N] [--scenario SCENARIO] [--scenarios SCENARIOS] [--all_maps] [--heuristic] [--stochastic] [--maps_only] [--gym_only]
+                   [--gpu] [--gpu_id GPU_ID] [--id ID] [--generate] [--verbose] [--params [PARAMS ...]]
+                   config
 
 positional arguments:
   config                Path to config file
@@ -127,67 +101,50 @@ positional arguments:
 options:
   -h, --help            show this help message and exit
   -a [A ...]            Add maps
-  -t [T ...]            Add timeouts for maps, 1000 otherwise
   -d                    remove all other maps
   -r [R ...]            Record episode only, potentially override render params
+  -n N                  Parallel gyms for evaluate
   --scenario SCENARIO   Load specific scenario
+  --scenarios SCENARIOS
+                        Load file with multiple scenarios
   --all_maps            Load all maps
   --heuristic           Use Heuristic Only
+  --stochastic          Set agent to stochastic
   --maps_only           Draws maps only
+  --gym_only            Only evaluates gym. Specify full config path.
   --gpu                 Activates usage of GPU
   --gpu_id GPU_ID       Activates usage of GPU on specific GPU id
+  --id ID               Gives the log files a specific name, else config name
   --generate            Generate config file for parameter class
   --verbose             Prints the network summary at the start
   --params [PARAMS ...]
                         Override parameters as: path/to/param1 value1 path/to/param2 value2 ...
+
 ```
 
 For instructions in the interactive evaluation environment press the ```h``` key.
 
 #### Recreate scenarios in the paper:
 
-To record the videos and log the final trajectory and statistics add ```-r```. It will run in the background. 
+To run the agents from the paper, make sure the submodule is initialized. Run the following commands to run the
+respective agents:
 
-Figure 2:
+Baseline:
+```python evaluate.py baseline```
 
-- a) ```python evaluate.py multi3_no_hist --scenario short_loop```
-- b) ```python evaluate.py multi3_no_hist --scenario long_loop```
+Ensemble:
+```python evaluate.py ens```
 
-Figure 7:
+Regularization:
+```python evaluate.py reg```
 
-- a) ```python evaluate.py manhattan --scenario decomp2```
-- b) ```python evaluate.py manhattan --scenario decomp2 --heuristic```
-- c) ```python evaluate.py manhattan --scenario decomp3```
-- d) ```python evaluate.py manhattan --scenario decomp3 --heuristic```
+Ensemble + Regularization:
+```python evaluate.py ens_reg```
 
-Figure 8:
+Augmentation:
+```python evaluate.py rot_aug```
 
-- a) ```python evaluate.py tum --scenario tum1```
-- b) ```python evaluate.py tum --scenario tum2```
-
-Figure 9:
-
-- a) ```python evaluate.py multi3 --scenario suburban```
-- b) ```python evaluate.py suburban --scenario suburban```
-- c) ```python evaluate.py multi3 --scenario castle```
-- d) ```python evaluate.py castle --scenario castle```
-- e) ```python evaluate.py multi3 --scenario tum```
-- f) ```python evaluate.py tum --scenario tum```
-
-Figure 10:
-
-- a) ```python evaluate.py multi10 --scenario castle2 -a castle2```
-- b) ```python evaluate.py castle --scenario castle2 -a castle2```
-
-Figure 11:
-
-- d) ```python evaluate.py multi10 --scenario cal -a cal42```
-- h) ```python evaluate.py cal --scenario cal```
-
-Figure 12:
-
-- a) ```python evaluate.py multi10 --scenario border -a hard```
-- b) ```python evaluate.py border --scenario border```
+Add ```--all_maps``` to evaluate on all maps including the OOD maps.
 
 ## Resources
 
@@ -209,14 +166,25 @@ heuristic. The model is saved as 'res/[map_name]_model.pickle'. For large maps, 
 
 If using this code for research purposes, please cite:
 
+For the Equivariant Ensembles and Regularization for Reinforcement Learning in Map-based Path Planning:
+
 ```
-@misc{theile2023learning,
-      title={Learning to Recharge: UAV Coverage Path Planning through Deep Reinforcement Learning}, 
-      author={Mirco Theile and Harald Bayerlein and Marco Caccamo and Alberto L. Sangiovanni-Vincentelli},
-      year={2023},
-      eprint={2309.03157},
-      archivePrefix={arXiv},
-      primaryClass={cs.RO}
+@misc{theile2024equivariant,
+  title={Equivariant Ensembles and Regularization for Reinforcement Learning in Map-based Path Planning},
+  author={Theile, Mirco and Cao, Hongpeng and Caccamo, Marco and Sangiovanni-Vincentelli, Alberto L},
+  journal={arXiv preprint arXiv:2403.12856},
+  year={2024}
+}
+```
+
+For the power-constrained CPP problem with recharge:
+
+```
+@article{theile2023learning,
+  title={Learning to recharge: UAV coverage path planning through deep reinforcement learning},
+  author={Theile, Mirco and Bayerlein, Harald and Caccamo, Marco and Sangiovanni-Vincentelli, Alberto L},
+  journal={arXiv preprint arXiv:2309.03157},
+  year={2023}
 }
 ```
 
