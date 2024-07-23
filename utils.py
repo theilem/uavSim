@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Generic, Tuple
 
 import numpy as np
+import pandas as pd
 from dataclasses_json import DataClassJsonMixin
 
 import tensorflow as tf
@@ -293,3 +294,39 @@ def override_params(params, overrides):
             exit(1)
 
     return params
+
+
+def flatten_json(json_data, prefix=''):
+    flat_data = {}
+    for key, value in json_data.items():
+        new_key = f"{prefix}/{key}" if prefix else key
+        if isinstance(value, dict):
+            flat_data.update(flatten_json(value, new_key))
+        elif isinstance(value, list):
+            flat_data[new_key] = ', '.join(map(str, value))
+        else:
+            flat_data[new_key] = value
+    return flat_data
+
+
+def get_agents_from_logs(logs_dir, specs):
+    subdirectories = [subdir for subdir in os.listdir(logs_dir) if os.path.isdir(os.path.join(logs_dir, subdir))]
+    runs = []
+    # Iterate over each subdirectory
+    for subdir in subdirectories:
+        with open(os.path.join(logs_dir, subdir, "config.json"), "r") as f:
+            config = json.load(f)
+
+        run_config = flatten_json(config)
+        run_config['agent'] = subdir
+        runs.append(run_config)
+    df = pd.DataFrame(runs)
+    for query in specs["general_config"]:
+        df = df.query(query)
+    agents = {}
+    for name, run_specs in specs["runs"].items():
+        run_df = df
+        for query in run_specs:
+            run_df = run_df.query(query)
+        agents[name] = run_df["agent"].to_list()
+    return agents
