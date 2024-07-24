@@ -19,13 +19,12 @@ This repository contains the implementation of
 the [Equivariant Ensembles and Regularization for Reinforcement Learning in Map-based Path Planning](https://arxiv.org/abs/2403.12856)
 based on the [power-constrained coverage path planning (CPP) with recharge problem](https://arxiv.org/abs/2309.03157).
 This repository contains the implementation of the Equivariant Ensembles and Regularization implementation for the CPP
-problem. Additionally, it utilizes map-based observations,
+problem. An animation of the Ensemble agent is shown in the following gif.
+![Ensemble Agent](./screenshots/animation.gif)
+
+Additionally, it utilizes map-based observations,
 preprocessed as global and local maps, action masking to ensure safety, discount factor scheduling to optimize the
-long-horizon problem, and position history observations to avoid state loops.
-
-![Screenshot of the evaluation](./screenshots/example.png)
-
-The agents are stored in a submodule and can be pulled by
+long-horizon problem, and position history observations to avoid state loops. The agents are stored in a submodule and can be pulled by
 
 ```commandline
 git submodule init
@@ -87,6 +86,8 @@ options:
 - Augmentation ```python train.py --gpu config/rot_aug.json```
 
 ### Evaluating
+
+![Screenshot of the evaluation](./screenshots/example.png)
 
 #### General Usage
 
