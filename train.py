@@ -3,7 +3,6 @@ from dataclasses import dataclass
 
 from src.gym import PathPlanningGymFactory
 from src.trainer.agent import AgentFactory
-from src.trainer.observation import ObservationFunctionFactory
 from src.base.evaluator import Evaluator
 from src.base.logger import Logger
 from src.trainer.trainer import TrainerFactory
@@ -17,7 +16,6 @@ class PathPlanningParams(AbstractParams):
     logger: Logger.Params = Logger.Params()
     evaluator: Evaluator.Params = Evaluator.Params()
     agent: AgentFactory.default_param_type() = AgentFactory.default_params()
-    observation: ObservationFunctionFactory.default_param_type() = ObservationFunctionFactory.default_params()
 
 
 if __name__ == "__main__":

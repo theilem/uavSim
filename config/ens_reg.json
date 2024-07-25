@@ -147,21 +147,5 @@
                 }
             }
         }
-    },
-    "observation": {
-        "type": "glob_loc",
-        "params": {
-            "position_history": true,
-            "random_layer": false,
-            "padding_values": [
-                0,
-                1,
-                1,
-                0,
-                0
-            ],
-            "global_map_scaling": 3,
-            "local_map_size": 17
-        }
     }
 }
