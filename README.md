@@ -36,7 +36,7 @@ For questions, please contact Mirco Theile via email mirco.theile@tum.de.
 ## Requirements
 
 ```
-tensorflow~=2.11.1
+tensorflow==2.11.1
 opencv-python==4.7.0.68
 scikit-image==0.21.0
 gymnasium==0.27.0
@@ -45,9 +45,10 @@ tqdm~=4.64.1
 seaborn==0.12.2
 dataclasses-json==0.5.7
 einops~=0.6.1
+numpy==1.26.1
 ```
 
-Developed and tested only on Linux and MacOS.
+Developed and tested only on Linux and MacOS. Tested with python 3.10.
 
 ## How to use
 
@@ -125,7 +126,7 @@ options:
 
 For instructions in the interactive evaluation environment press the ```h``` key.
 
-#### Recreate scenarios in the paper:
+#### Run the agents in the paper:
 
 To run the agents from the paper, make sure the submodule is initialized. Run the following commands to run the
 respective agents:
