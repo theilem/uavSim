@@ -1,5 +1,5 @@
 tensorflow==2.11.1
-opencv-python==4.7.0.68
+opencv-python==4.8.1.78
 scikit-image==0.21.0
 gymnasium==0.27.0
 pygame==2.5.1
