@@ -171,11 +171,12 @@ If using this code for research purposes, please cite:
 For the Equivariant Ensembles and Regularization for Reinforcement Learning in Map-based Path Planning:
 
 ```
-@misc{theile2024equivariant,
+@inproceedings{theile2024equivariant,
   title={Equivariant Ensembles and Regularization for Reinforcement Learning in Map-based Path Planning},
   author={Theile, Mirco and Cao, Hongpeng and Caccamo, Marco and Sangiovanni-Vincentelli, Alberto L},
-  journal={arXiv preprint arXiv:2403.12856},
-  year={2024}
+  booktitle={2024 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS)},
+  year={2024},
+  organization={IEEE}
 }
 ```
 
